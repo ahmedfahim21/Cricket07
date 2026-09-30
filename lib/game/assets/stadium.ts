@@ -4,15 +4,15 @@
  * The stand ring is the single biggest object in the scene, so it is built as
  * merged geometry rather than as thousands of small objects.
  *
- * There is deliberately no crowd. An instanced crowd came to ~440k triangles —
- * more than everything else in the scene put together — to fill seats nobody
- * looks at during a delivery. The frame budget belongs to the cricket.
+ * Spectators use instanced silhouettes so boundary chases have a populated
+ * backdrop without the geometry cost of full player models in every seat.
  */
 
 import * as THREE from "three";
 import * as BufferGeometryUtils from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { BOUNDARY_SQUARE, BOUNDARY_STRAIGHT, CREASE_Z } from "../dimensions";
 import type { MaterialLibrary } from "../materials";
+import { buildCrowd } from "./crowd";
 
 /** Gap between the rope and the front of the stands. */
 const RUN_OFF = 9;
@@ -211,6 +211,7 @@ function buildSightscreen(): THREE.Group {
 
 export type Stadium = {
   group: THREE.Group;
+  crowd: ReturnType<typeof buildCrowd>;
 };
 
 export function buildStadium(lib: MaterialLibrary, seed = 7): Stadium {
@@ -292,6 +293,7 @@ export function buildStadium(lib: MaterialLibrary, seed = 7): Stadium {
   }
   void CREASE_Z;
 
-  void seed;
-  return { group };
+  const crowd = buildCrowd(seed, TIERS, TIER_RISE, TIER_DEPTH, RUN_OFF);
+  group.add(crowd.group);
+  return { group, crowd };
 }

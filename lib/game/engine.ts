@@ -35,7 +35,7 @@ import {
 import { createMaterialLibrary, type MaterialLibrary } from "./materials";
 import { mulberry32 } from "./mat/noise";
 import { buildGround } from "./assets/ground";
-import { buildStadium } from "./assets/stadium";
+import { buildStadium, type Stadium } from "./assets/stadium";
 import { makeBall, makeStumps } from "./assets/equipment";
 import { BATTING_KIT, FIELDING_KIT, RIG_SCALE, makePlayer, type PlayerRig } from "./assets/kit";
 import { createRenderPipeline, type RenderPipeline } from "./render";
@@ -251,6 +251,7 @@ export class Game {
   private disposed = false;
 
   private lib!: MaterialLibrary;
+  private stadium!: Stadium;
   private world!: CricketWorld;
   private input: BattingController;
   private pipeline: RenderPipeline | null = null;
@@ -407,7 +408,8 @@ export class Game {
     this.scene.add(new THREE.HemisphereLight(0xbfd8f5, 0x4a5a34, 0.85));
 
     this.scene.add(buildGround(this.lib).group);
-    this.scene.add(buildStadium(this.lib).group);
+    this.stadium = buildStadium(this.lib);
+    this.scene.add(this.stadium.group);
 
     // Stumps: SIX individual meshes, one per physics body, in the same order
     // the world creates them (striker's end first), so each can be knocked
@@ -756,6 +758,13 @@ export class Game {
     this.updatePossession();
     this.updateMarker(dt);
     this.syncVisuals();
+    // Anticipation builds near the rope; a confirmed four or six lifts the bowl.
+    const rope = boundaryDistanceAlong(ball.position.x, ball.position.z);
+    const distance = Math.hypot(ball.position.x, ball.position.z);
+    const chasing = this.struck && this.phase === "resolved" && !this.holder;
+    const excitement = this.live.boundaryRuns !== null && !this.resetDone ? 1
+      : chasing ? THREE.MathUtils.smoothstep(distance / rope, 0.65, 1) * 0.8 : 0;
+    this.stadium.crowd.update(dt, excitement);
     this.updateCamera(dt);
     this.emitTelemetry(dt);
   }
@@ -1546,6 +1555,17 @@ export class Game {
       look.lerpVectors(bat, ball, 0.62);
       look.y = Math.max(1, look.y);
       fov = CAMERA_FOV + pull * 22;
+      // As the shot reaches the rope, bring the ball and the reacting stand
+      // into the same frame instead of leaving the crowd on the horizon.
+      const radial = Math.hypot(ball.x, ball.z);
+      const boundaryFollow = THREE.MathUtils.smoothstep(radial / boundaryDistanceAlong(ball.x, ball.z), 0.55, 0.95);
+      if (boundaryFollow > 0) {
+        const ux = ball.x / radial;
+        const uz = ball.z / radial;
+        target.lerp(new THREE.Vector3(ball.x - ux * 32, 8 + Math.max(0, ball.y) * 0.45, ball.z - uz * 32), boundaryFollow);
+        look.lerp(new THREE.Vector3(ball.x, Math.max(2.4, ball.y), ball.z), boundaryFollow);
+        fov = THREE.MathUtils.lerp(fov, 48, boundaryFollow);
+      }
     } else if (this.cameraMode === "batting") {
       target.copy(CAMERA_BATTING);
       look.copy(CAMERA_BATTING_LOOK);
@@ -1765,6 +1785,7 @@ export class Game {
       m.geometry?.dispose();
     });
     this.pipeline?.dispose();
+    this.stadium?.crowd.dispose();
     this.lib?.dispose();
     this.world?.dispose();
     this.renderer.dispose();
