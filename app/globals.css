@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+:root {
+  --hud-plate: rgba(10, 16, 12, 0.82);
+  --hud-plate-edge: rgba(150, 200, 160, 0.28);
+  --hud-green: #7dd66a;
+  --hud-green-dim: #2f5b30;
+  --hud-amber: #e8c44a;
+  --hud-text: #eaf3e6;
+  --hud-muted: #9db29a;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: #0a0d0b;
+  color: var(--hud-text);
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+  overflow: hidden;
+  /* The game owns the arrow keys and space; stop the page reacting to them. */
+  overscroll-behavior: none;
+}
+
+canvas {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+}
+
+/*
+ * Hierarchy in this HUD comes from size, colour and the angled plates, not
+ * from font weight — the original's scoreboard type is uniform.
+ */
+.hud-plate {
+  background: var(--hud-plate);
+  border: 1px solid var(--hud-plate-edge);
+  backdrop-filter: blur(3px);
+}
+
+/* The angled cut on the score bar, which is the original's signature shape. */
+.hud-angled {
+  clip-path: polygon(0 0, 100% 0, calc(100% - 14px) 100%, 14px 100%);
+}
+
+.hud-angled-right {
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 14px 100%);
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
