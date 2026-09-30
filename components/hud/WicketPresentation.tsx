@@ -16,12 +16,13 @@ export function WicketPresentation({ live }: { live: LiveState | null }) {
       raf = requestAnimationFrame(draw);
       if (!panel.current) return;
       const batter = live.moment?.dismissed;
-      panel.current.hidden = !batter;
+      panel.current.hidden = !batter || live.momentShot === null;
       if (!batter) return;
       panel.current.style.opacity = String(1 - live.fade);
       // Avoid repeatedly announcing unchanged live-region text on every frame.
-      const heading = live.momentShot === "walkoff" ? `DISMISSED · ${batter.dismissal?.toUpperCase()}` : "WICKET!";
-      const score = `${batter.runs} RUNS   ·   ${batter.ballsFaced} BALLS`;
+      const heading = live.momentShot === "walkoff" ? `DISMISSED · ${batter.dismissal?.toUpperCase()}`
+        : live.moment?.bowlerName ? `${live.moment.bowlerName.toUpperCase()} STRIKES!` : "WICKET!";
+      const score = `${batter.runs} ${batter.runs === 1 ? "RUN" : "RUNS"}   ·   ${batter.ballsFaced} ${batter.ballsFaced === 1 ? "BALL" : "BALLS"}`;
       if (title.current && title.current.textContent !== heading) title.current.textContent = heading;
       if (name.current && name.current.textContent !== batter.name) name.current.textContent = batter.name;
       if (stats.current && stats.current.textContent !== score) stats.current.textContent = score;

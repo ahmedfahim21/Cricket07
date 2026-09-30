@@ -61,6 +61,8 @@ export interface DeliveryPlan {
    * bowler's actual hand position so the ball comes out of the hand.
    */
   releaseZ?: number;
+  /** Flighted player-controlled spin can need a higher launch than the stock generator. */
+  maxElevation?: number;
 }
 
 /** Typical numbers per style, before any per-delivery variation. */
@@ -184,7 +186,7 @@ export function buildDelivery(
   // Steeper (more negative) elevation pitches shorter i.e. further from the
   // batsman, so bracket from steeply down to slightly up.
   let lo = -0.5; // radians, steeply down
-  let hi = 0.12; // slightly up
+  let hi = plan.maxElevation ?? 0.12; // stock trajectory, or extra flight for slow spin
   let best = make(hi);
 
   for (let i = 0; i < 24; i++) {

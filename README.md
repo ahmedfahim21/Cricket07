@@ -8,6 +8,9 @@ spin, move around the crease, read the animated pitch marker, and time ground
 shots or lofts. Fielders chase, gather and throw; batsmen run automatically.
 Unlocks and best successful scores are saved locally in this browser.
 
+**Player bowling** — choose a pace or spin specialist, steer the pitch marker
+during the run-up and defend 24 runs in two overs against an automated batsman.
+
 ## Running it
 
 ```bash
@@ -19,6 +22,7 @@ pnpm dev
 ```
 
 Then open http://localhost:3000, choose the first challenge, and press R to bowl.
+Choose **Try bowling** on the challenge menu to play as the fielding side instead.
 
 ## Challenge ladder
 
@@ -67,6 +71,43 @@ Well-timed attacking shots have enough power for fours and sixes against pace
 and spin. Placement still matters: ground shots into a fielder can be stopped,
 poor timing loses power, and balls beyond your reach can beat the bat.
 
+## Bowling mode
+
+Keep the AI below 24 runs across 12 legal deliveries, or take three wickets.
+The selected player determines the delivery action, stock seam/spin and available
+pace range. Select a different bowler between deliveries; his style stays fixed
+throughout the run-up. Batting-ladder progress is separate and unaffected.
+After six legal balls, an unfinished innings pauses at the bowler picker.
+Choose the next bowler and pace, then click **Start next over**; R cannot skip
+this pause, and wides do not advance the over.
+
+| Controls | Bowling action |
+|---|---|
+| R / Bowl button | Start the run-up |
+| A / D or ← / → | Move the landing circle screen-left/right |
+| W / S or ↑ / ↓ | Fuller / shorter length |
+| Q / E or pace slider | Slower / faster within the selected bowler's range |
+| Space | Lock line, length and pace early |
+| V | Switch camera; bowling starts in the behind-bowler TV view |
+
+The ring pulses cyan while editable, then turns green when locked. If Space is
+not pressed, it locks automatically near the end of the run-up. The locked
+delivery compensates for aerodynamic drift and uses the live physics integrator
+to locate the landing point. Late inputs cannot change the ball already chosen.
+
+The AI observes after release and commits to a leave, defence, ground stroke or
+loft with its own footwork, aim and timing error. It uses the same contact/shot
+solver, reach checks, running and fielding as a human. Loose balls invite attacks;
+awkward lengths and changes of pace make timing harder. Outcomes are physical,
+not preselected wickets or scores. Untouched balls outside the arcade 1.2 m
+crease corridor count as wides: one extra, no legal ball or ball faced consumed.
+This first version does not model manual field placement, no-ball foot faults,
+LBW or signature deliveries. Bowlers and tuning are fictional, not EA roster data.
+
+After the live dismissal hold, player-earned wickets show a brief close-up fist pump, raised arms or a
+competitive point/stare before the team huddle and existing short walk-off.
+Fours and sixes remain umpire-only.
+
 ## Cameras
 
 **Batting** (default) is third person over the striker's shoulder. It is the
@@ -100,7 +141,8 @@ to the umpire waving for four or raising both arms for six. Both finish after
 the signal (2.6 seconds), without batsman or bowler reaction cuts. Confetti and the
 graphic's bounce respect reduced-motion settings.
 
-Wickets have a 5.2-second broadcast sequence: all eleven fielders gather around
+Wickets stay in the live camera for one second so the falling stumps or completed
+catch remain visible, followed by a 5.2-second broadcast sequence: all eleven fielders gather around
 the bowler, with staggered arrivals, high-fives, shoulder pats, applause and
 fist pumps, then a shorter 2.2-second close-up of the dismissed batsman walking off.
 Walk-offs vary between a bowed head, a straightforward exit and a hand on the
@@ -202,9 +244,8 @@ cross the rope.
 pnpm test
 ```
 
-153 tests. The physics, shot resolution and scoring are pure modules with no
-three.js and no Rapier imports, which is what makes them testable — all Rapier
-wiring is confined to `lib/game/physics/world.ts`.
+199 tests cover pure rules/decisions, procedural animation and real Rapier
+delivery integration. Rapier wiring is confined to `lib/game/physics/world.ts`.
 
 - `physics/aero.test.ts` — drag, Magnus, swing; includes integration checks that
   a delivery loses 8–20% of its pace over 20m and swings 15–90cm
@@ -215,6 +256,10 @@ wiring is confined to `lib/game/physics/world.ts`.
 - `match/state.test.ts` — the laws: wides don't count as balls, byes don't go to
   the batsman, strike rotates on odd runs *and* at the end of the over
 - `match/over.test.ts` — a full over end to end, no renderer
+- `match/player-bowling.test.ts` — specialist pace ranges, aiming bounds, landing
+  accuracy for full/good/short lengths, wides and defending a target
+- `match/ai-batsman.test.ts` — varied shot selection, leaves, imperfect footwork,
+  timing mistakes, attacks on loose balls and difficulty after changes of pace
 - `physics/predict.test.ts` — the predictor matches the live world to under 5 cm;
   a throw lands in the keeper's gloves despite drag
 - `anim/ik.test.ts`, `anim/track.test.ts` — IK solutions and keyframe tangents
@@ -238,8 +283,12 @@ GAME_URL=http://localhost:3000 node scripts/game-smoke.mjs
 The script locates Playwright Chromium, Chrome or Edge; set `CHROME_PATH` for
 another installation. It exercises the actual engine (batting animation and
 fielding included), completes the ladder, verifies fours/sixes, tests movement
-in both cameras, checks failure/retry and saved unlocks, and writes screenshots
-to the system temporary directory. It requires the development-only `__game`
+in both cameras, and checks failure/retry and saved unlocks. Bowling checks cover
+UI start/Space focus, all four specialists, manual/automatic locking, landing
+accuracy, actual AI bat contact, wide penalties, winning/losing defences, live
+wicket impact holds, wicket close-ups, the end-of-over bowler picker and returning
+to batting. It writes screenshots to the system
+temporary directory. It requires the development-only `__game`
 handle and does not use personal browser data.
 
 ## Looking at the assets
@@ -320,6 +369,12 @@ The [Cricket 07 producer diary](https://worthplaying.com/article/2006/11/2/news/
 describes crease movement, automatic/manual footwork and generous timing windows
 for accessible boundary hitting. Those behaviors guide this implementation;
 the tuning values and short challenge ladder are original, not recovered EA data.
+
+For bowling, [GameSpot's contemporary Cricket 07 review](https://www.gamespot.com/reviews/cricket-07-review/1900-6162251/)
+describes bowler-specific deliveries and controlling pace and the landing marker
+during the run-up. This implementation follows that sequence with bounded,
+steadier keyboard aiming and automatic locking rather than reproducing its
+pace-overrun/no-ball meter.
 
 ## Assets and copyright
 

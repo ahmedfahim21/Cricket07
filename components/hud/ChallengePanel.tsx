@@ -8,10 +8,11 @@ interface Props {
   select: (level: number) => void;
   bowl: () => void;
   menu: () => void;
+  bowling: () => void;
 }
 
 /** Slow-changing challenge UI; the engine remains the authority for unlocks and results. */
-export function ChallengePanel({ telemetry: t, select, bowl, menu }: Props) {
+export function ChallengePanel({ telemetry: t, select, bowl, menu, bowling }: Props) {
   const c = t.challenge;
   const level = CHALLENGES[c.level];
   const button = "rounded border border-[#7dd66a]/50 bg-[#14261d] px-4 py-2 text-sm text-[#e1efdd] hover:bg-[#25422d] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7dd66a] disabled:cursor-not-allowed disabled:opacity-40";
@@ -31,6 +32,7 @@ export function ChallengePanel({ telemetry: t, select, bowl, menu }: Props) {
         {c.screen === "select" ? <>
           <h1 className="mt-3 text-3xl">Chase it down</h1>
           <p className="mt-2 text-sm text-[var(--hud-muted)]">Five chases. Three wickets each. Find the gaps and clear the rope.</p>
+          <button className={`${button} mt-4 w-full border-[#ffe078]/60 text-[#ffe078]`} onClick={bowling}>Try bowling · defend 24 runs</button>
           <div className="mt-5 grid gap-2">
             {CHALLENGES.map((l) => <button key={l.id} disabled={l.id > c.progress.unlocked} className={`${button} flex items-center justify-between text-left`} onClick={() => select(l.id)}>
               <span><span className="mr-3 text-[var(--hud-green)]">0{l.id + 1}</span>{l.name}

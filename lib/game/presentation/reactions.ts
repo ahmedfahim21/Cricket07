@@ -38,7 +38,27 @@ export class ReactionScene {
     if (!moment || !shot) return;
     for (const rig of [...this.fielders, ...this.batsmen]) rig.root.visible = false;
     const p = this.pose;
-    if (shot === "fielders") {
+    if (shot === "bowler-wicket") {
+      const rig = this.fielders[0];
+      rig.root.visible = true;
+      rig.root.position.set(8, 0, 0);
+      rig.root.rotation.set(0, -0.25, 0);
+      idlePose(p, time);
+      const energy = Math.sin(Math.PI * smooth(time / 1.05));
+      if (moment.bowlerVariant === 2) {
+        // A brief, non-verbal competitive stare/point, without delaying the group cut.
+        setPose(p, { aimRSwing: Math.PI * 1.5, aimRElbow: 0.12, aimRW: 1, torsoPitch: 0.08, headYaw: -0.16 });
+      } else {
+        setPose(p, { aimRSwing: 2.3 + energy * 0.7, aimRElbow: 0.8 + energy * 0.5, aimRW: 1, torsoYaw: energy * 0.3 });
+        if (moment.bowlerVariant === 1) {
+          setPose(p, { aimLSwing: 2.9, aimLElbow: 0.5, aimLW: 1 });
+          rig.root.position.y = energy * 0.18;
+        }
+      }
+      applyPose(rig, p);
+      this.camera.set(10.3, 2.1, -4.7);
+      this.look.set(8, 1.25, 0);
+    } else if (shot === "fielders") {
       this.teamCelebration(moment, time);
     } else if (shot === "walkoff") {
       const t = time - WICKET_WALKOFF_TIME;

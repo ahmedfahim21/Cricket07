@@ -99,3 +99,12 @@ export const CONTROL_HELP: { keys: string; action: string }[] = [
   { keys: "R", action: "Next delivery" },
   { keys: "V", action: "Batting / TV camera" },
 ];
+
+export const BOWLING_CONTROL_HELP = [
+  { keys: "WASD / arrows", action: "Aim line and length during run-up" },
+  { keys: "W / ↑", action: "Fuller · S / ↓ shorter" },
+  { keys: "Q / E", action: "Slower / faster" },
+  { keys: "Space", action: "Lock delivery (or wait for the crease)" },
+  { keys: "R", action: "Start next delivery" },
+  { keys: "V", action: "Switch camera" },
+];

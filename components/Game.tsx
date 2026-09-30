@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Game, type LiveState, type Telemetry } from "@/lib/game/engine";
-import { CONTROL_HELP } from "@/lib/game/input/bindings";
+import { CONTROL_HELP, BOWLING_CONTROL_HELP } from "@/lib/game/input/bindings";
 import { DeliveryPanel } from "./hud/DeliveryPanel";
 import { FadeOverlay } from "./hud/FadeOverlay";
 import { FieldRadar } from "./hud/FieldRadar";
@@ -12,6 +12,7 @@ import { ChallengePanel } from "./hud/ChallengePanel";
 import { BoundaryCelebration } from "./hud/BoundaryCelebration";
 import { WicketPresentation } from "./hud/WicketPresentation";
 import { GameplayHud } from "./hud/GameplayHud";
+import { BowlingPanel } from "./hud/BowlingPanel";
 
 /**
  * Canvas host and HUD tree.
@@ -57,7 +58,7 @@ export default function GameCanvas() {
 
   return (
     <main className="relative h-screen w-screen overflow-hidden">
-      <canvas ref={canvasRef} />
+      <canvas ref={canvasRef} tabIndex={0} aria-label="Cricket game" className="outline-none" />
       <FadeOverlay live={live} />
 
       {loading && (
@@ -89,9 +90,11 @@ export default function GameCanvas() {
           <GameplayHud live={live}>
             <DeliveryPanel live={live} telemetry={telemetry} />
             <FieldRadar live={live} />
-            <ShotMeter live={live} />
-            <ScorePlate match={telemetry.match} team="IND" />
-            <ChallengePanel telemetry={telemetry} select={(level) => gameRef.current?.selectLevel(level)} bowl={() => gameRef.current?.bowl()} menu={() => gameRef.current?.showLevelSelect()} />
+            {telemetry.mode === "batting" && <ShotMeter live={live} />}
+            <ScorePlate match={telemetry.match} team={telemetry.mode === "bowling" ? "IND · AI" : "IND"} />
+            {telemetry.mode === "batting"
+              ? <ChallengePanel telemetry={telemetry} select={(level) => gameRef.current?.selectLevel(level)} bowl={() => gameRef.current?.bowl()} menu={() => gameRef.current?.showLevelSelect()} bowling={() => gameRef.current?.startBowling()} />
+              : <BowlingPanel live={live} telemetry={telemetry} selectBowler={(i) => gameRef.current?.selectPlayerBowler(i)} pace={(value) => gameRef.current?.setPlayerPace(value)} bowl={() => gameRef.current?.bowl()} retry={() => gameRef.current?.startBowling()} menu={() => gameRef.current?.showLevelSelect()} nextOver={() => gameRef.current?.confirmBowlerChange()} />}
           </GameplayHud>
 
           {/* Event banner — only while there is something to say. */}
@@ -109,7 +112,7 @@ export default function GameCanvas() {
               <div className="mb-1.5 tracking-[0.16em] text-[var(--hud-muted)]">CONTROLS</div>
               <table className="tabular">
                 <tbody>
-                  {CONTROL_HELP.map((c) => (
+                  {(telemetry.mode === "bowling" ? BOWLING_CONTROL_HELP : CONTROL_HELP).map((c) => (
                     <tr key={c.action}>
                       <td className="pr-3 text-[var(--hud-green)]">{c.keys}</td>
                       <td className="text-[var(--hud-muted)]">{c.action}</td>

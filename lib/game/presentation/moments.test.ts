@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 import { applyBall, newInnings } from "../match/state";
-import { dismissedBatsman, momentShot, nextReaction, type MatchMoment } from "./moments";
+import { dismissedBatsman, momentShot, nextReaction, reactionTime, WICKET_IMPACT_TIME, type MatchMoment } from "./moments";
 import { ReactionScene } from "./reactions";
 import { BOUNDARY_HOLD_TIME } from "./boundary";
 
@@ -10,13 +10,30 @@ const wicket: MatchMoment = { kind: "wicket", bowlerVariant: 0, batterVariant: 0
 describe("match-moment presentation", () => {
   it("reserves player cutaways for wickets and keeps both boundaries umpire-only", () => {
     expect(momentShot(null, 1)).toBeNull();
-    expect(momentShot(wicket, 0)).toBe("fielders");
-    expect(momentShot(wicket, 2.99)).toBe("fielders");
-    expect(momentShot(wicket, 3)).toBe("walkoff");
+    expect(momentShot(wicket, 0)).toBeNull();
+    expect(momentShot(wicket, WICKET_IMPACT_TIME)).toBe("fielders");
+    expect(momentShot(wicket, 3.99)).toBe("fielders");
+    expect(momentShot(wicket, 4)).toBe("walkoff");
+    expect(momentShot({ ...wicket, bowlerName: "Mitchell" }, 0.5)).toBeNull();
+    expect(momentShot({ ...wicket, bowlerName: "Mitchell" }, 1.5)).toBe("bowler-wicket");
+    expect(momentShot({ ...wicket, bowlerName: "Mitchell" }, 2.1)).toBe("fielders");
     for (const kind of ["four", "six"] as const) {
       for (const time of [0, 1.4, 2.6, 4, 5.2]) expect(momentShot({ ...wicket, kind }, time)).toBeNull();
     }
     expect(BOUNDARY_HOLD_TIME).toBe(2.6);
+  });
+
+  it("keeps both dismissal types live for a full second without eating animation time", () => {
+    for (const dismissal of ["bowled", "caught"] as const) {
+      const dismissed = dismissedBatsman(newInnings(["A", "B", "C"]), dismissal);
+      for (const bowlerName of [undefined, "Mitchell"]) {
+        const moment = { ...wicket, dismissed, bowlerName };
+        expect(momentShot(moment, 0.99)).toBeNull();
+        expect(reactionTime(moment, 0.99)).toBe(0);
+        expect(reactionTime(moment, 1.5)).toBe(0.5);
+        expect(reactionTime(moment, 4)).toBe(3);
+      }
+    }
   });
 
   it("includes the dismissal ball without mutating or double-scoring the innings", () => {

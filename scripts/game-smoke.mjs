@@ -9,12 +9,15 @@ const browser = await chromium.launch({
 });
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 const errors = [];
+console.log("Browser started; loading game");
 page.on("pageerror", (e) => errors.push(e.message));
-page.on("console", (m) => { if (m.type() === "warning") console.log(m.text()); });
+page.on("console", (m) => { if (m.type() === "warning" || m.type() === "error") console.log(m.text()); });
+page.on("requestfailed", (request) => console.log("Request failed:", request.url(), request.failure()?.errorText));
 try {
   await page.goto(process.argv[2] || process.env.GAME_URL || "http://localhost:3001");
   await page.waitForFunction(() => !!window.__game || document.body.innerText.includes("FAILED TO START"), null, { timeout: 120000 });
   assert.equal(await page.evaluate(() => !!window.__game), true, "game startup failed");
+  console.log("Game ready");
   await page.getByRole("heading", { name: "Chase it down" }).waitFor();
   await page.screenshot({ path: "/private/tmp/cricket-ladder.png" });
   await page.getByRole("button", { name: /01Find the gaps/ }).click();
@@ -234,7 +237,7 @@ try {
           window.__dismissedIndex = g.match.striker;
           window.__beforeWickets = g.match.wickets;
           window.__dismissed = dismissed;
-          for (let i = 0; i < 180 && g.live.celebrationTime < 2; i++) g.update(1 / 60);
+          for (let i = 0; i < 240 && g.live.celebrationTime < 3; i++) g.update(1 / 60);
           g.pipeline.render(1 / 60); g.emitTelemetry(999);
           return { original, dismissed, shot: g.live.momentShot, teamSize: g.reactions.fielders.filter((f) => f.root.visible).length, hold: g.deadTimer };
         }
@@ -246,7 +249,7 @@ try {
   assert.ok(wicket, "need an actual wicket for visual inspection");
   assert.equal(wicket.shot, "fielders");
   assert.equal(wicket.teamSize, 11);
-  assert.equal(wicket.hold, 5.2);
+  assert.equal(wicket.hold, 6.2);
   assert.equal(wicket.dismissed.runs, wicket.original.runs);
   assert.equal(wicket.dismissed.ballsFaced, wicket.original.ballsFaced + 1);
   await page.getByTestId("wicket-presentation").waitFor({ state: "visible" });
@@ -300,8 +303,217 @@ try {
   await page.getByRole("heading", { name: "Chase it down" }).waitFor();
   assert.equal(await page.getByRole("button", { name: /05Finish the chase/ }).isEnabled(), true);
   assert.equal(await page.evaluate(() => window.__game.match.runs), 0, "reload starts a fresh innings");
+  await page.getByRole("button", { name: "Try bowling · defend 24 runs" }).click();
+  await page.getByRole("heading", { name: "Defend the total" }).waitFor();
+  await page.getByLabel("YOUR BOWLER").selectOption("2");
+  await page.getByLabel("Delivery pace").fill("45");
+  await page.screenshot({ path: "/private/tmp/cricket-bowling-setup.png" });
+  await page.evaluate(() => cancelAnimationFrame(window.__game.raf));
+  await page.getByRole("button", { name: "Start bowling · R" }).click();
+  await page.keyboard.down("ArrowRight");
+  await page.keyboard.down("KeyW");
+  const aiming = await page.evaluate(() => {
+    const g = window.__game;
+    for (let i = 0; i < 28; i++) g.update(1 / 60);
+    g.pipeline.render(1 / 60); g.emitTelemetry(999);
+    return { aim: structuredClone(g.bowlingAim), unlocked: !g.markerLocked, visible: g.marker.visible };
+  });
+  await page.keyboard.up("ArrowRight"); await page.keyboard.up("KeyW");
+  assert.ok(aiming.unlocked && aiming.visible && aiming.aim.line > -0.12 && aiming.aim.length < 5);
+  await page.screenshot({ path: "/private/tmp/cricket-bowling-aim.png" });
+  await page.keyboard.press("Space");
+  assert.ok(await page.evaluate(() => {
+    const g = window.__game;
+    g.update(1 / 60); g.pipeline.render(1 / 60); g.emitTelemetry(999);
+    return g.markerLocked && document.activeElement === g.canvas;
+  }), "Space should lock after clicking Start, not reactivate the button");
+  await page.screenshot({ path: "/private/tmp/cricket-bowling-locked.png" });
+  await page.evaluate(() => {
+    const g = window.__game;
+    for (let i = 0; i < 2600 && g.phase !== "idle"; i++) g.update(1 / 60);
+  });
+  await page.evaluate(() => {
+    const g = window.__game;
+    cancelAnimationFrame(g.raf);
+    window.__bowlPlayer = ({ move = null, moveFrames = 28, pace = null, manualLock = false, spamBat = false, stopAtImpact = false } = {}) => {
+      const key = (code, down) => window.dispatchEvent(new KeyboardEvent(down ? "keydown" : "keyup", { code }));
+      const before = structuredClone(g.match);
+      const selected = g.playerBowler;
+      if (g.bowlerChangePending) g.confirmBowlerChange();
+      else g.bowl();
+      let locked = null;
+      let stable = true;
+      let error = null;
+      let markerSeen = false;
+      let struck = false;
+      let decision = null;
+      let releaseSpeed = null;
+      let wicketCut = false;
+      let consumedFrames = 0;
+      if (move) key(move, true);
+      if (pace) key(pace, true);
+      for (let frame = 0; frame < 2600; frame++) {
+        consumedFrames++;
+        if (frame === moveFrames) {
+          if (move) key(move, false);
+          if (pace) key(pace, false);
+          if (manualLock) key("Space", true);
+        }
+        if (frame === moveFrames + 1) key("Space", false);
+        if (spamBat && frame % 10 === 0) key("KeyC", true);
+        g.update(1 / 60);
+        if (spamBat) key("KeyC", false);
+        markerSeen ||= g.marker.visible;
+        if (g.markerLocked && !locked) {
+          locked = { aim: structuredClone(g.bowlingAim), marker: g.marker.position.clone(), plan: structuredClone(g.plan) };
+          // Mid-delivery UI changes must not swap actions or change pace after lock.
+          g.selectPlayerBowler((selected + 1) % 4);
+          g.setPlayerPace(0);
+        }
+        if (locked && !g.resetDone) {
+          stable &&= JSON.stringify(locked.aim) === JSON.stringify(g.bowlingAim) && selected === g.playerBowler;
+          if (g.marker.visible) stable &&= locked.marker.distanceTo(g.marker.position) < 1e-6;
+        }
+        if (g.phase === "flight" && releaseSpeed === null) releaseSpeed = Math.hypot(g.world.ball.velocity.x, g.world.ball.velocity.y, g.world.ball.velocity.z) * 3.6;
+        if (locked && g.world.lastBounce && error === null) error = Math.hypot(locked.marker.x - g.world.lastBounce.position.x, locked.marker.z - g.world.lastBounce.position.z);
+        decision ||= g.aiDecision ? structuredClone(g.aiDecision) : null;
+        struck ||= g.struck;
+        wicketCut ||= g.live.momentShot === "bowler-wicket";
+        if (stopAtImpact && g.live.moment?.kind === "wicket") break;
+        if (g.phase === "idle") break;
+      }
+      if (move) key(move, false);
+      if (pace) key(pace, false);
+      key("Space", false); key("KeyC", false);
+      return { markerSeen, stable, error, locked: locked?.aim, releaseSpeed, struck, decision, wicketCut, impact: g.live.moment?.kind === "wicket",
+        idle: g.phase === "idle", consumedFrames, event: g.lastEvent, before, after: structuredClone(g.match) };
+    };
+  });
+  const bowling = await page.evaluate(() => {
+    const g = window.__game;
+    const saved = JSON.stringify(g.progress);
+    const reports = [];
+    for (let bowler = 0; bowler < 4; bowler++) {
+      g.startBowling(); g.selectPlayerBowler(bowler);
+      reports.push(window.__bowlPlayer({ move: "ArrowUp", pace: "KeyQ", manualLock: true }));
+      reports.push(window.__bowlPlayer({ move: "ArrowDown", pace: "KeyE", spamBat: true }));
+    }
+    const unchanged = JSON.stringify(g.progress) === saved;
+    g.emitTelemetry(999);
+    return { reports, unchanged };
+  });
+  console.log("Player bowling:", bowling.reports.map((r) => `${r.releaseSpeed?.toFixed(0)}kph ${r.decision?.shot || "leave"}: ${r.event}`).join("; "));
+  assert.ok(bowling.unchanged, "bowling must not unlock batting levels");
+  assert.ok(bowling.reports.every((r) => r.idle && r.markerSeen && r.stable && r.error !== null && r.error < 0.15), "every specialist must lock, hit the marker and finish the delivery");
+  assert.ok(bowling.reports.some((r) => r.struck), "AI must make real physical bat contact");
+  assert.ok(bowling.reports.every((r) => r.decision), "AI must choose its own stroke");
+  const wide = await page.evaluate(() => {
+    const g = window.__game;
+    g.startBowling(); g.selectPlayerBowler(0);
+    return window.__bowlPlayer({ move: "ArrowRight", moveFrames: 130, manualLock: true });
+  });
+  assert.equal(wide.after.extras, 1, "an unreachable untouched ball must cost a wide");
+  assert.equal(wide.after.ballsThisOver, 0);
+  assert.equal(wide.after.batsmen[0].ballsFaced, 0);
+  const overBreak = await page.evaluate(() => {
+    const g = window.__game;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      g.startBowling(); g.selectPlayerBowler(2);
+      for (let ball = 0; ball < 6 && !g.match.complete; ball++) window.__bowlPlayer();
+      if (g.bowlerChangePending) {
+        g.pipeline.render(1 / 60); g.emitTelemetry(999);
+        return { score: JSON.stringify(g.match), overs: g.match.overs, balls: g.match.ballsThisOver };
+      }
+    }
+    return null;
+  });
+  assert.ok(overBreak && overBreak.overs === 1 && overBreak.balls === 0);
+  await page.getByRole("heading", { name: "Over complete — choose your bowler" }).waitFor();
+  await page.keyboard.press("r");
+  assert.ok(await page.evaluate((snapshot) => {
+    const g = window.__game;
+    g.update(1 / 60);
+    return g.phase === "idle" && g.bowlerChangePending && JSON.stringify(g.match) === snapshot;
+  }, overBreak.score), "R must not bypass the over-break picker");
+  await page.getByLabel("YOUR BOWLER").selectOption("0");
+  await page.screenshot({ path: "/private/tmp/cricket-bowler-change.png" });
+  await page.getByRole("button", { name: "Start next over", exact: true }).click();
+  assert.ok(await page.evaluate((snapshot) => {
+    const g = window.__game;
+    const valid = g.phase === "runup" && !g.bowlerChangePending && g.playerBowler === 0 && g.style === "fast" && JSON.stringify(g.match) === snapshot;
+    for (let i = 0; i < 2600 && g.phase !== "idle"; i++) g.update(1 / 60);
+    return valid;
+  }, overBreak.score), "confirmation must start the new bowler without resetting the innings");
+  const spell = await page.evaluate(() => {
+    const g = window.__game;
+    g.startBowling();
+    g.selectPlayerBowler(0);
+    const reports = [];
+    for (let ball = 0; ball < 20 && !g.match.complete; ball++) reports.push(window.__bowlPlayer());
+    const snapshot = JSON.stringify(g.match);
+    g.bowl();
+    g.emitTelemetry(999);
+    return { reports, complete: g.match.complete, blocked: g.phase === "idle" && snapshot === JSON.stringify(g.match), match: g.match };
+  });
+  console.log("Bowling spell:", spell.reports.map((r) => r.event).join(", "));
+  assert.ok(spell.complete && spell.blocked, "bowling challenge must finish and block further deliveries");
+  await page.getByRole("button", { name: "Bowl again", exact: true }).waitFor();
+  await page.screenshot({ path: "/private/tmp/cricket-bowling-result.png" });
+  await page.getByRole("button", { name: "Bowl again", exact: true }).click();
+  assert.equal(await page.evaluate(() => window.__game.match.runs), 0);
+  const loss = await page.evaluate(() => {
+    const g = window.__game;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      g.startBowling(); g.selectPlayerBowler(2);
+      for (let ball = 0; ball < 14 && !g.match.complete; ball++) window.__bowlPlayer({ move: ball === 0 ? "ArrowUp" : null });
+      if (g.match.runs >= 24) { g.emitTelemetry(999); return true; }
+    }
+    return false;
+  });
+  assert.ok(loss, "loose bowling must also be chaseable by the AI");
+  await page.getByRole("heading", { name: "Target chased down" }).waitFor();
+  // Find a physical wicket; never inject a dismissal to make the cinematic pass.
+  const playerWicket = await page.evaluate(() => {
+    const g = window.__game;
+    for (let attempt = 0; attempt < 40; attempt++) {
+      g.startBowling(); g.selectPlayerBowler(attempt % 2);
+      const result = window.__bowlPlayer({ move: "ArrowUp", stopAtImpact: true });
+      if (result.impact) {
+        const camera = g.camera.position.clone();
+        const look = g.cameraLook.clone();
+        const stumps = JSON.stringify(g.world.stumpTransforms());
+        const liveImmediately = g.live.momentShot === null && !g.reactions.group.visible && g.bowler.rig.root.visible;
+        for (let i = 0; i < 30; i++) g.update(1 / 60);
+        g.pipeline.render(1 / 60); g.emitTelemetry(999);
+        return { cut: g.live.momentShot, liveImmediately, name: g.live.moment.bowlerName,
+          cameraHeld: camera.equals(g.camera.position) && look.equals(g.cameraLook),
+          physicsContinued: stumps !== JSON.stringify(g.world.stumpTransforms()),
+          visible: g.batsmen.every((b) => b.rig.root.visible) && g.ballMesh.visible };
+      }
+    }
+    return null;
+  });
+  assert.ok(playerWicket && playerWicket.cut === null && playerWicket.liveImmediately && playerWicket.cameraHeld && playerWicket.visible && playerWicket.physicsContinued, "show the actual wicket falling before cutting away");
+  await page.getByTestId("wicket-presentation").waitFor({ state: "hidden" });
+  await page.screenshot({ path: "/private/tmp/cricket-wicket-impact.png" });
+  assert.equal(await page.evaluate(() => {
+    const g = window.__game;
+    for (let i = 0; i < 90 && g.live.celebrationTime < 1.5; i++) g.update(1 / 60);
+    g.pipeline.render(1 / 60); g.emitTelemetry(999);
+    return g.live.momentShot;
+  }), "bowler-wicket", "celebrate after the one-second dismissal hold");
+  await page.getByTestId("wicket-presentation").waitFor({ state: "visible" });
+  await page.screenshot({ path: "/private/tmp/cricket-bowling-wicket.png" });
+  await page.evaluate(() => {
+    const g = window.__game;
+    for (let i = 0; i < 600 && g.phase !== "idle"; i++) g.update(1 / 60);
+    g.showLevelSelect();
+  });
+  await page.getByRole("heading", { name: "Chase it down" }).waitFor();
+  await page.getByRole("button", { name: /01Find the gaps/ }).click();
+  assert.equal(await page.evaluate(() => window.__game.live.mode), "batting");
   assert.deepEqual(errors, []);
-  console.log("PASS: ladder, persistence, live shots, movement, markers, boundary/umpire reactions, wicket high-fives, walk-off stats and reset");
+  console.log("PASS: batting ladder, player bowling, AI shots, pace/aim locks, markers, challenge results, celebrations and mode switching");
 } catch (error) {
   console.log("Page errors:", errors);
   await page.screenshot({ path: "/private/tmp/cricket-failure.png" });

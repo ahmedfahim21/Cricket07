@@ -1,5 +1,5 @@
 /**
- * Keyboard -> BattingIntent.
+ * Keyboard -> batting intent or the separate bowling aim/pace/lock intent.
  *
  * Held state (footwork, aim, square) is polled; the shot press is EDGE
  * triggered and consumed exactly once, because it is the timing event and a
@@ -26,6 +26,7 @@ export class BattingController {
   private disposed = false;
   private restartPressed = false;
   private cameraPressed = false;
+  private bowlingLockPressed = false;
 
   constructor(bindings: Bindings = DEFAULT_BINDINGS) {
     this.bindings = bindings;
@@ -55,6 +56,7 @@ export class BattingController {
     // Ignore auto-repeat: holding the shot key must not fire repeatedly.
     if (e.repeat) return;
     this.held.add(e.code);
+    if (e.code === "Space") this.bowlingLockPressed = true;
 
     const b = this.bindings;
     if (b.defensive.includes(e.code)) this.queueShot("defensive");
@@ -79,10 +81,11 @@ export class BattingController {
     this.pendingShot = null;
     this.restartPressed = false;
     this.cameraPressed = false;
+    this.bowlingLockPressed = false;
   };
 
   private isBound(code: string): boolean {
-    return Object.values(this.bindings).some((list) => list.includes(code));
+    return code === "KeyQ" || code === "KeyE" || Object.values(this.bindings).some((list) => list.includes(code));
   }
 
   private queueShot(type: ShotType) {
@@ -135,6 +138,17 @@ export class BattingController {
     const was = this.cameraPressed;
     this.cameraPressed = false;
     return was;
+  }
+
+  /** Bowling uses its own intent so aiming/locking can never trigger the AI's bat. */
+  consumeBowling() {
+    const lock = this.bowlingLockPressed;
+    this.bowlingLockPressed = false;
+    return {
+      x: Number(this.anyHeld(["KeyD", "ArrowRight"])) - Number(this.anyHeld(["KeyA", "ArrowLeft"])),
+      forward: Number(this.anyHeld(["KeyW", "ArrowUp"])) - Number(this.anyHeld(["KeyS", "ArrowDown"])),
+      pace: Number(this.held.has("KeyE")) - Number(this.held.has("KeyQ")), lock,
+    };
   }
 
   dispose(): void {

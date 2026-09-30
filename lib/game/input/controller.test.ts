@@ -17,6 +17,13 @@ beforeEach(() => {
 afterEach(() => { controller.dispose(); vi.unstubAllGlobals(); });
 
 describe("movement input", () => {
+  it("maps bowling aim and pace separately, consumes lock once and clears on blur", () => {
+    key("keydown", "KeyA"); key("keydown", "ArrowUp"); key("keydown", "KeyE"); key("keydown", "Space");
+    expect(controller.consumeBowling()).toEqual({ x: -1, forward: 1, pace: 1, lock: true });
+    expect(controller.consumeBowling().lock).toBe(false);
+    events.dispatchEvent(new Event("blur"));
+    expect(controller.consumeBowling()).toEqual({ x: 0, forward: 0, pace: 0, lock: false });
+  });
   it("keeps WASD independent of shot aim and footwork", () => {
     key("keydown", "KeyA"); key("keydown", "KeyW");
     expect(controller.peek()).toMatchObject({ moveX: -1, moveForward: 1, aim: 0, footwork: "none" });
