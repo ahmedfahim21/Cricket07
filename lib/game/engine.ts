@@ -51,7 +51,7 @@ import { RUN_TIME, fieldFor, runsAvailable, type FieldPosition } from "./match/f
 import { applyBall, newInnings, toOutcome, type Dismissal, type MatchState } from "./match/state";
 import { BattingController } from "./input/controller";
 import type { ShotType } from "./input/bindings";
-import { applyPose, sweetSpot } from "./anim/pose";
+import { applyPose, makePose, sweetSpot } from "./anim/pose";
 import { APPROACH, BowlerAnimator, deliveryOrigin } from "./anim/bowler";
 import { BatsmanAnimator, CONTACT_X } from "./anim/batsman";
 import { FielderAnimator, JOG, SPRINT, faceYaw } from "./anim/fielder";
@@ -200,6 +200,8 @@ type Holder =
 interface PendingShot {
   outcome: ShotOutcome;
   type: ShotType;
+  /** Where the predictor says the ball will be at contact, world space. */
+  at: THREE.Vector3;
 }
 
 /** A catch being run for. */
@@ -600,6 +602,12 @@ export class Game {
     }
 
     this.updatePlayers(dt);
+    // The bat reaching the ball — checked straight after the batsman is posed
+    // for this frame, so the frame drawn is the frame of contact.
+    const bat = this.striker.bat;
+    if (this.phase === "flight" && this.pending && bat.state === "shot" && bat.shotTime >= bat.contactT) {
+      this.contact();
+    }
     this.updatePossession();
     this.syncVisuals();
     this.updateCamera(dt);
@@ -645,13 +653,6 @@ export class Game {
         this.left = true;
         this.striker.bat.leave();
       }
-    }
-
-    // The bat reaching the ball.
-    const bat = this.striker.bat;
-    if (this.pending && bat.state === "shot" && bat.shotTime >= bat.contactT) {
-      this.contact();
-      return;
     }
 
     // Past the batsman untouched: bowled, or into the keeper's gloves.
@@ -755,15 +756,21 @@ export class Game {
       exitDirection: outcome.missed ? 0 : outcome.exitDirection,
       downswing,
       look: contact.clone(),
-    });
+    }, this.striker.rig);
 
     if (outcome.missed || !reachable) {
+      if (!reachable) {
+        console.warn("[shot] ball out of reach", {
+          contact: contact.toArray().map((v) => +v.toFixed(3)),
+          fromShoulder: +contact.distanceTo(shoulder).toFixed(3),
+        });
+      }
       this.live.lastBand = "missed";
       this.lastEvent = "Beaten";
       return;
     }
     this.live.lastBand = outcome.band;
-    this.pending = { outcome, type };
+    this.pending = { outcome, type, at: new THREE.Vector3(hit.position.x, hit.position.y, hit.position.z) };
   }
 
   /**
@@ -774,13 +781,25 @@ export class Game {
   private contact(): void {
     const pending = this.pending!;
     this.pending = null;
-    const rig = this.striker.rig;
+    const s = this.striker;
+    const rig = s.rig;
+    // Measure the bat at the exact contact instant, then put the frame's pose back.
+    applyPose(rig, s.bat.contactPose(this.contactScratch));
     const batAt = sweetSpot(rig, new THREE.Vector3());
     rig.root.updateMatrixWorld(true);
     rig.root.localToWorld(batAt);
-    const b = this.world.ball.position;
-    const gap = batAt.distanceTo(_v1.set(b.x, b.y, b.z));
-    if (gap > 0.35) {
+    applyPose(rig, s.bat.pose);
+    const gap = batAt.distanceTo(pending.at);
+    if (gap > 0.25) {
+      // The IK could not get the bat's middle to the ball (too wide, too
+      // high, too far forward). Logged so a miss that looks wrong can be traced.
+      console.warn("[shot] bat missed the ball", {
+        gap: +gap.toFixed(3),
+        bat: batAt.toArray().map((v) => +v.toFixed(3)),
+        ball: pending.at.toArray().map((v) => +v.toFixed(3)),
+        shape: s.bat.shape,
+        contactT: +s.bat.contactT.toFixed(3),
+      });
       this.live.lastBand = "missed";
       this.lastEvent = "Beaten";
       return;
@@ -854,12 +873,14 @@ export class Game {
         }
       }
     }
-    if (best < 0 && Number.isFinite(beyond)) {
-      // Nobody can stop it: the nearest man chases it to the rope anyway.
-      const cross = pathAt(path, beyond);
+    if (best < 0 && path.length > 0) {
+      // Nobody can cut it off in flight: the nearest man goes to where it
+      // ends up — the rope, or wherever it stops rolling.
+      const cross = Number.isFinite(beyond) ? pathAt(path, beyond) : path[path.length - 1].position;
       let nearest = Infinity;
       this.fielders.forEach((f, i) => {
         if (i === this.keeperIndex) return;
+        if (this.catchPlan && this.catchPlan.fielder === i) return;
         const d = Math.hypot(cross.x - f.world.x, cross.z - f.world.z);
         if (d < nearest) {
           nearest = d;
@@ -867,7 +888,8 @@ export class Game {
         }
       });
       bestPoint = new THREE.Vector3(cross.x, 0, cross.z);
-      bestT = beyond;
+      // When he gets there, for the batsmen's judgement of the run.
+      bestT = Number.isFinite(beyond) ? beyond : REACTION + runTime(nearest - REACH);
     }
 
     if (best !== this.chaser && this.chaser >= 0 && !this.fielders[this.chaser].busy) {
@@ -942,6 +964,7 @@ export class Game {
     }
   }
   private runsToRun = 0;
+  private contactScratch = makePose();
 
   private updateInPlay(dt: number): void {
     this.contactClock += dt;

@@ -26,7 +26,7 @@
  */
 
 import * as THREE from "three";
-import { SKELETON } from "../assets/kit";
+import { SKELETON, type PlayerRig } from "../assets/kit";
 import type { Footwork, ShotType } from "../input/bindings";
 import {
   C,
@@ -37,10 +37,12 @@ import {
   batFromAxes,
   batOf,
   batQuaternion,
+  applyPose,
   copyPose,
   gripForSweetSpot,
   makePose,
   setPose,
+  sweetSpot,
 } from "./pose";
 import { Track, type Key } from "./track";
 
@@ -383,6 +385,42 @@ export function shotKeys(from: Pose, plan: ShotPlan): { keys: Key[]; contactT: n
   return { keys, contactT: Tc, shape };
 }
 
+/**
+ * Take the body to the ball.
+ *
+ * The keys put the hands where the bat needs them, but arms have a length: to
+ * a ball wide of off stump, or down by the boots, they run out before the
+ * bat's middle gets there. A batsman closes that gap with his legs and hips —
+ * knees bend, the pelvis drops and moves toward the line — and the feet stay
+ * where they landed. So: pose the contact key on the real rig, measure where
+ * the middle actually is, and move the pelvis by the shortfall, a few times.
+ * The keys either side of contact move with it so the motion stays smooth.
+ */
+export function fitToBall(rig: PlayerRig, keys: Key[], contactT: number, contact: THREE.Vector3): number {
+  const at = keys.findIndex((k) => Math.abs(k.t - contactT) < 1e-9);
+  if (at < 0) throw new Error("shot keys have no key at the contact time");
+  const shifted = [at - 1, at, at + 1].filter((i) => i > 0 && i < keys.length);
+  const sweet = new THREE.Vector3();
+  let gap = Infinity;
+  for (let iter = 0; iter < 5; iter++) {
+    applyPose(rig, keys[at].pose);
+    sweetSpot(rig, sweet);
+    const err = sweet.sub(contact);
+    gap = err.length();
+    if (gap < 0.02) break;
+    for (const i of shifted) {
+      const p = keys[i].pose;
+      // Near keys follow fully; the one before contact half-way, so the hips
+      // are already travelling as the hands come down.
+      const k = i === at ? 1 : 0.6;
+      p[C.pelvisX] = THREE.MathUtils.clamp(p[C.pelvisX] - err.x * k, -0.45, 0.3);
+      p[C.pelvisY] = THREE.MathUtils.clamp(p[C.pelvisY] - err.y * k, -0.42, 0);
+      p[C.pelvisZ] = THREE.MathUtils.clamp(p[C.pelvisZ] - err.z * k, -0.3, 0.2);
+    }
+  }
+  return gap;
+}
+
 /** Feet part-way from the live pose to their shot positions (mid-stride). */
 function lerpFeet(from: Pose, to: PoseValues, k: number): PoseValues {
   const out: PoseValues = {};
@@ -458,8 +496,13 @@ export class BatsmanAnimator {
     this.liftTarget = on ? 1 : 0;
   }
 
-  play(plan: ShotPlan): ShotShape {
+  /**
+   * Start a shot. With the batsman's `rig`, the stroke is fitted to his body
+   * first — see `fitToBall` — so the bat's middle really arrives on the ball.
+   */
+  play(plan: ShotPlan, rig?: PlayerRig): ShotShape {
     const { keys, contactT, shape } = shotKeys(this.pose, plan);
+    if (rig) fitToBall(rig, keys, contactT, plan.contact);
     this.track = new Track(keys);
     this.contactT = contactT;
     this.shotTime = 0;
@@ -485,6 +528,17 @@ export class BatsmanAnimator {
       this.recoverT = 0;
       this.state = "recover";
     }
+  }
+
+  /**
+   * The pose at the exact instant of contact, whatever frame the clock landed
+   * on. Contact is judged against this rather than the nearest frame: at 30
+   * m/s a single 16 ms frame is half a metre of ball travel.
+   */
+  contactPose(out: Pose): Pose {
+    if (this.state !== "shot" || !this.track) throw new Error("contactPose called with no shot in progress");
+    this.track.evaluate(this.contactT, out);
+    return out;
   }
 
   get finished(): boolean {
