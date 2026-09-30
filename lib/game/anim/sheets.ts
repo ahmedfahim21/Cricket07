@@ -319,7 +319,7 @@ function captureShot(sc: ShotCase) {
     downswing: 0.18,
     look: contact,
   };
-  const shape = b.play(plan);
+  const shape = b.play(plan, rig);
   const t0 = t;
   const picks = [0.09, 0.15, 0.18, 0.25, 0.36, 0.52, 0.75];
   let measure: { sweet: number; top: number; bottom: number } | null = null;
