@@ -320,8 +320,11 @@ export class FielderAnimator {
     const prev = this.speed;
     this.speed += THREE.MathUtils.clamp(want - this.speed, -lim.brake * dt, lim.accel * dt);
 
-    // Turn toward the heading, slower the faster he is going.
-    if (dist > 0.05) {
+    // Turn toward the heading, slower the faster he is going. Not once he is
+    // arriving: there he turns to his final facing instead, and steering at
+    // the (now sideways) heading as well deadlocks the two turns against
+    // each other with him stood still.
+    if (dist > 0.2) {
       const heading = faceYaw(to.x, to.z);
       const rate = THREE.MathUtils.lerp(9, 3.2, Math.min(1, this.speed / 7));
       const dy = wrapAngle(heading - this.yaw);
