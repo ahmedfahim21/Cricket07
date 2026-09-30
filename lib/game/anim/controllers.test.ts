@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { BATTING_KIT, FIELDING_KIT, makePlayer } from "../assets/kit";
 import type { Footwork, ShotType } from "../input/bindings";
 import { applyPose, C, makePose, sweetSpot } from "./pose";
-import { BatsmanAnimator, CONTACT_X, readyBatPose } from "./batsman";
+import { BatsmanAnimator, CONTACT_X, readyBatPose, shotShape } from "./batsman";
 import { APPROACH, deliveryOrigin, simulateRelease } from "./bowler";
 import { FielderAnimator, SPRINT } from "./fielder";
 import { RunnerAnimator } from "./runner";
@@ -33,6 +33,51 @@ function batsmanInBacklift(footwork: Footwork): BatsmanAnimator {
 }
 
 describe("BatsmanAnimator", () => {
+  it("selects low leg-side strokes without replacing high pulls or straight drives", () => {
+    const plan = { type: "ground" as const, footwork: "front" as const, contact: new THREE.Vector3(-0.8, 0.3, 0.1), exitDirection: 1.1, downswing: 0.18, look: new THREE.Vector3() };
+    expect(shotShape(plan)).toBe("sweep");
+    expect(shotShape({ ...plan, type: "lofted" })).toBe("slog-sweep");
+    expect(shotShape({ ...plan, type: "lofted", exitDirection: 1.7 })).toBe("scoop");
+    expect(shotShape({ ...plan, type: "defensive" })).toBe("defence");
+    expect(shotShape({ ...plan, exitDirection: 0 })).toBe("drive");
+    expect(shotShape({ ...plan, footwork: "back", contact: new THREE.Vector3(-0.16, 1.1, 0.1) })).toBe("pull");
+  });
+
+  it("keeps leg-side strokes reachable and both hands in front of the shoulders through the follow-through", () => {
+    const player = makePlayer({ role: "batsman", colours: BATTING_KIT });
+    for (const footwork of ["front", "back"] as const) {
+      for (const type of ["ground", "lofted"] as const) {
+        for (const exitDirection of [0.6, 1.05, 1.7, 2.1]) {
+          for (const height of [0.25, 0.65, 1.1]) {
+            const b = batsmanInBacklift(footwork);
+            const contact = new THREE.Vector3(CONTACT_X[footwork], height, 0.1);
+            b.play({ type, footwork, contact, exitDirection, downswing: 0.18, look: contact }, player);
+            applyPose(player, b.contactPose(makePose()));
+            const scenario = `${b.shape} ${footwork} ${height} ${exitDirection}`;
+            expect(sweetSpot(player).distanceTo(contact), scenario).toBeLessThan(0.06);
+            // Sample the solved rig, not just authored keys: IK and interpolation
+            // must not put either glove behind the shoulder plane mid-swing.
+            let previousHands: THREE.Vector3[] | null = null;
+            for (let i = 0; i < 100; i++) {
+              b.update(1 / 120);
+              applyPose(player, b.pose);
+              const hands = [player.handL, player.handR].map(hand => hand.getWorldPosition(new THREE.Vector3()));
+              if (previousHands) hands.forEach((hand, index) => {
+                expect(hand.distanceTo(previousHands![index]), `${scenario} glove jump`).toBeLessThan(0.18);
+              });
+              previousHands = hands;
+              if (b.shotTime < b.contactT) continue;
+              for (const hand of [player.handL, player.handR]) {
+                const local = player.chest.worldToLocal(hand.getWorldPosition(new THREE.Vector3()));
+                expect(local.z, `${scenario} at ${b.shotTime}`).toBeLessThan(0.12);
+              }
+              expect(Math.abs(b.pose[C.torsoYaw]), scenario).toBeLessThanOrEqual(0.61);
+            }
+          }
+        }
+      }
+    }
+  });
   it("lifts and grounds the bat repeatedly, then stops tapping for the delivery", () => {
     const sample = (time: number, trigger = 0) => readyBatPose(makePose(), {
       time, trigger, footwork: 0, lift: 0, look: new THREE.Vector3(-18, 1.8, 0),

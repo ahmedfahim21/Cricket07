@@ -182,13 +182,20 @@ export interface ShotPlan {
   look: THREE.Vector3;
 }
 
-export type ShotShape = "drive" | "defence" | "punch" | "flick" | "pull" | "cut" | "loft";
+export type ShotShape = "drive" | "defence" | "punch" | "flick" | "pull" | "cut" | "loft" | "sweep" | "slog-sweep" | "scoop";
 
 /** Which family of stroke a plan produces. */
 export function shotShape(plan: ShotPlan): ShotShape {
   const e = plan.exitDirection;
   const high = plan.contact.y > 0.8;
   if (plan.type === "defensive") return "defence";
+  // Low, square leg-side balls need a cross-bat stroke even on the back foot.
+  // A finer aerial shot opens the face in front of the batter instead of
+  // forcing a drive to continue behind the shoulders along the exit direction.
+  if (plan.contact.y <= 0.8 && e > 0.75) {
+    return plan.type === "lofted" ? e > 1.35 ? "scoop" : "slog-sweep" : "sweep";
+  }
+  if (high && e > 0.45) return "pull";
   if (plan.footwork === "back" && high) return e > 0.2 ? "pull" : e < -0.35 ? "cut" : "punch";
   if (plan.footwork === "back") return "punch";
   if (plan.type === "lofted") return "loft";
@@ -206,6 +213,7 @@ export function shotShape(plan: ShotPlan): ShotShape {
  */
 export function shotKeys(from: Pose, plan: ShotPlan): { keys: Key[]; contactT: number; shape: ShotShape } {
   const shape = shotShape(plan);
+  if (shape === "sweep" || shape === "slog-sweep" || shape === "scoop") return sweepKeys(from, plan, shape);
   const d = exitVector(plan.exitDirection);
   const e = plan.exitDirection;
   const Tc = Math.max(0.08, plan.downswing);
@@ -223,8 +231,9 @@ export function shotKeys(from: Pose, plan: ShotPlan): { keys: Key[]; contactT: n
   // Where the feet end up for this shot.
   const feet: PoseValues = {};
   const body: PoseValues = {};
-  const legSide = Math.max(0, e);
-  const offSide = Math.max(0, -e);
+  // Exit angle includes mistiming: it must not become an unlimited spine twist.
+  const legSide = THREE.MathUtils.clamp(e, 0, 1);
+  const offSide = THREE.MathUtils.clamp(-e, 0, 1);
   if (plan.footwork === "front") {
     Object.assign(feet, {
       // Stride toward the pitch of the ball and toward its line.
@@ -251,7 +260,7 @@ export function shotKeys(from: Pose, plan: ShotPlan): { keys: Key[]; contactT: n
     Object.assign(body, {
       pelvisX: 0.14, pelvisY: -0.05, pelvisPitch: 0.08,
       pelvisYaw: shape === "pull" ? 0.95 : shape === "cut" ? -0.1 : 0.1,
-      torsoYaw: shape === "pull" ? 0.75 : shape === "cut" ? -0.35 : 0.1,
+      torsoYaw: shape === "pull" ? 0.5 : shape === "cut" ? -0.35 : 0.1,
       torsoPitch: shape === "cut" ? 0.3 : 0.15,
       torsoRoll: shape === "pull" ? 0.15 : 0,
     });
@@ -338,7 +347,7 @@ export function shotKeys(from: Pose, plan: ShotPlan): { keys: Key[]; contactT: n
       qFollow = qC.clone();
       break;
     case "pull":
-      followGrip = new THREE.Vector3(-0.05, 1.3, 0.22);
+      followGrip = new THREE.Vector3(-0.35, 1.3, -0.18);
       qFollow = new THREE.Quaternion().setFromAxisAngle(_ey, 1.3).multiply(qC);
       break;
     case "cut":
@@ -354,7 +363,7 @@ export function shotKeys(from: Pose, plan: ShotPlan): { keys: Key[]; contactT: n
       qFollow = batQuaternion(yaw, 0, 1.2);
       break;
     case "flick":
-      followGrip = new THREE.Vector3(-0.15, 1.3, 0.15);
+      followGrip = new THREE.Vector3(-0.35, 1.3, -0.18);
       qFollow = batQuaternion(yaw + 0.5, 0, 2.1);
       break;
     default:
@@ -373,8 +382,8 @@ export function shotKeys(from: Pose, plan: ShotPlan): { keys: Key[]; contactT: n
     shape === "defence"
       ? {}
       : {
-          pelvisYaw: (body.pelvisYaw as number) + 0.25,
-          torsoYaw: (body.torsoYaw as number) + 0.45,
+          pelvisYaw: Math.min(1.1, (body.pelvisYaw as number) + 0.2),
+          torsoYaw: Math.min(0.6, (body.torsoYaw as number) + 0.15),
           torsoPitch: (body.torsoPitch as number) - 0.15,
         };
 
@@ -388,6 +397,60 @@ export function shotKeys(from: Pose, plan: ShotPlan): { keys: Key[]; contactT: n
     { t: tFinish, pose: base({ ...feet, ...body, ...openFinish, ...batChannels(followGrip, qFollow), lookW: 0.4 }), hold: true },
   ];
   return { keys, contactT: Tc, shape };
+}
+
+/**
+ * Low leg-side strokes sweep the blade around the front knee. The hands stay
+ * in front of the chest; bat-face angle, not an arm reaching backwards, sends
+ * the ball fine. The scoop lifts from that same crouch; the slog finishes high.
+ */
+function sweepKeys(from: Pose, plan: ShotPlan, shape: "sweep" | "slog-sweep" | "scoop") {
+  const contactT = Math.max(0.08, plan.downswing);
+  const c = plan.contact;
+  const scoop = shape === "scoop";
+  const aerial = shape !== "sweep";
+  const body: PoseValues = {
+    pelvisX: -0.18, pelvisY: -0.24, pelvisPitch: 0.12, pelvisYaw: 0.55,
+    torsoPitch: 0.25, torsoYaw: 0.25, torsoRoll: 0.12,
+    footLX: Math.min(-0.5, c.x + 0.2), footLY: G, footLZ: -0.12, footLYaw: 0.7, footLW: 1,
+    footRX: 0.2, footRY: G + 0.09, footRZ: 0.08, footRYaw: 0.3, footRPitch: -0.7, footRW: 1,
+    lookX: plan.look.x, lookY: plan.look.y, lookZ: plan.look.z, lookW: 1,
+  };
+  const handAnchor = new THREE.Vector3(-0.34, 0.88, -0.35);
+  const face = exitVector(plan.exitDirection);
+  face.y = scoop ? 1.1 : aerial ? 0.5 : -0.12;
+  const qContact = batFromAxes(handAnchor.clone().sub(c), face);
+  const gripContact = gripForSweetSpot(c, qContact);
+  const frontGrip = new THREE.Vector3(-0.42, 1.05, -0.42);
+  const qFront = batOf(from).slerp(qContact, 0.55);
+  // Carry the blade around the front pad without dragging the handle behind it.
+  const after = c.clone().add(new THREE.Vector3(-0.08, aerial ? 0.14 : 0.02, 0.18));
+  const qAfter = batFromAxes(handAnchor.clone().sub(after), face);
+  const finishGrip = new THREE.Vector3(-0.46, aerial ? 1.18 : 0.94, aerial ? -0.38 : -0.24);
+  // Aerial strokes finish with the blade above the hands, clear of the ribs.
+  const qFinish = batFromAxes(new THREE.Vector3(scoop ? -0.15 : -0.4, aerial ? -0.75 : 0.2, -0.7), face);
+  const key = (t: number, grip: THREE.Vector3, q: THREE.Quaternion, weight: number, finish = false): Key => {
+    const pose = copyPose(makePose(), from);
+    // Ease the whole body down with the hands, rather than snapping into a kneel.
+    for (const [name, value] of Object.entries(body)) {
+      const channel = C[name as keyof typeof C];
+      pose[channel] = lerp(from[channel], value as number, weight);
+    }
+    if (finish) setPose(pose, { pelvisYaw: 0.85, torsoYaw: 0.4, lookW: 0.6 });
+    setPose(pose, batChannels(grip, q));
+    return { t, pose };
+  };
+  const follow = contactT + (scoop ? 0.38 : 0.32);
+  const finish = key(follow, finishGrip, qFinish, 1, true);
+  return { shape, contactT, keys: [
+    { t: 0, pose: copyPose(makePose(), from) },
+    key(contactT * 0.48, frontGrip, qFront, 0.55),
+    key(contactT * 0.82, frontGrip.clone().lerp(gripContact, 0.7), qFront.clone().slerp(qContact, 0.7), 0.9),
+    key(contactT, gripContact, qContact, 1),
+    key(contactT + 0.08, gripForSweetSpot(after, qAfter), qAfter, 1),
+    finish,
+    { t: follow + 0.4, pose: copyPose(makePose(), finish.pose), hold: true },
+  ] };
 }
 
 /**
@@ -407,12 +470,29 @@ export function fitToBall(rig: PlayerRig, keys: Key[], contactT: number, contact
   const shifted = [at - 1, at, at + 1].filter((i) => i > 0 && i < keys.length);
   const sweet = new THREE.Vector3();
   let gap = Infinity;
-  for (let iter = 0; iter < 5; iter++) {
+  for (let iter = 0; iter < 12; iter++) {
     applyPose(rig, keys[at].pose);
     sweetSpot(rig, sweet);
     const err = sweet.sub(contact);
     gap = err.length();
     if (gap < 0.02) break;
+    // If a requested handle position lies behind the chest, the arm solver
+    // brings it forward. Re-angle the blade around that reachable grip rather
+    // than asking the spine to twist backwards to restore contact.
+    const oldQ = batOf(keys[at].pose);
+    const actualGrip = rig.bat!.position.clone().addScaledVector(new THREE.Vector3(0, 1, 0).applyQuaternion(rig.bat!.quaternion), GRIP_TOP);
+    const requestedGrip = new THREE.Vector3(keys[at].pose[C.gripX], keys[at].pose[C.gripY], keys[at].pose[C.gripZ]);
+    if (iter >= 3 && actualGrip.distanceTo(requestedGrip) > 0.04) {
+      const q = batFromAxes(actualGrip.sub(contact), new THREE.Vector3(0, 0, -1).applyQuaternion(oldQ));
+      const grip = gripForSweetSpot(contact, q);
+      const delta = grip.clone().sub(requestedGrip);
+      for (const i of shifted) {
+        const p = keys[i].pose;
+        const weight = i === at ? 1 : 0.6;
+        const adjusted = new THREE.Vector3(p[C.gripX], p[C.gripY], p[C.gripZ]).addScaledVector(delta, weight);
+        setPose(p, batChannels(adjusted, batOf(p).slerp(q, weight)));
+      }
+    }
     for (const i of shifted) {
       const p = keys[i].pose;
       // Near keys follow fully; the one before contact half-way, so the hips

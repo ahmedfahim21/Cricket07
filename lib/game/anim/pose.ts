@@ -394,6 +394,8 @@ function solveBat(rig: PlayerRig, p: Pose, w: number) {
   const sL = pointToRoot(rig.shoulderL, root, _a.set(0, 0, 0), new THREE.Vector3());
   const sR = pointToRoot(rig.shoulderR, root, _a.set(0, 0, 0), new THREE.Vector3());
   const mid = sL.clone().add(sR).multiplyScalar(0.5);
+  const chestRotation = quatToRoot(rig.chest, root, new THREE.Quaternion());
+  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(chestRotation);
 
   if (p[C.batOneHand] > 0.5) {
     // Carried: the right fist on the handle, the left arm free to swing.
@@ -404,6 +406,10 @@ function solveBat(rig: PlayerRig, p: Pose, w: number) {
   }
 
   for (let i = 0; i < 20; i++) {
+    // Reach alone admits targets through the torso. Allow a little shoulder
+    // extension, but never let either glove wrap behind the back mid-swing.
+    const depth = grip.dot(forward) - mid.dot(forward) - Math.max(0, GRIP_GAP * up.dot(forward));
+    if (depth < -0.06) grip.addScaledVector(forward, -0.06 - depth);
     bottom.copy(grip).addScaledVector(up, -GRIP_GAP);
     if (sL.distanceTo(grip) <= reach && sR.distanceTo(bottom) <= reach) break;
     grip.lerp(mid, 0.08);
@@ -413,8 +419,10 @@ function solveBat(rig: PlayerRig, p: Pose, w: number) {
   bat.quaternion.copy(_qBat);
   bat.position.copy(grip).addScaledVector(up, -GRIP_TOP);
 
-  solveArm(rig, -1, grip, POLE_TOP_ELBOW, w);
-  solveArm(rig, 1, bottom, POLE_BOTTOM_ELBOW, w);
+  // Elbow bend directions belong to the chest, not the pitch. Keeping them
+  // fixed in root space made the elbows flip as a leg-side stroke opened up.
+  solveArm(rig, -1, grip, POLE_TOP_ELBOW.clone().applyQuaternion(chestRotation), w);
+  solveArm(rig, 1, bottom, POLE_BOTTOM_ELBOW.clone().applyQuaternion(chestRotation), w);
 }
 
 const _axis = new THREE.Vector3();

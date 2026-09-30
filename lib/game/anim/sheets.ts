@@ -274,7 +274,10 @@ type ShotCase = {
 const SHOTS: ShotCase[] = [
   { name: "straight drive", footwork: "front", type: "ground", exit: 0, contact: [-0.82, 0.22, -0.35] },
   { name: "cover drive", footwork: "front", type: "ground", exit: -0.75, contact: [-0.8, 0.25, -0.58] },
-  { name: "flick to leg", footwork: "front", type: "ground", exit: 0.85, contact: [-0.74, 0.3, -0.18] },
+  { name: "flick to leg", footwork: "front", type: "ground", exit: 0.6, contact: [-0.74, 0.3, -0.18] },
+  { name: "sweep to square leg", footwork: "front", type: "ground", exit: 1.1, contact: [-0.8, 0.25, 0.1] },
+  { name: "slog sweep", footwork: "front", type: "lofted", exit: 1.2, contact: [-0.8, 0.4, 0.1] },
+  { name: "scoop to fine leg", footwork: "back", type: "lofted", exit: 1.7, contact: [-0.16, 0.4, 0.1] },
   { name: "forward defence", footwork: "front", type: "defensive", exit: 0.05, contact: [-0.7, 0.3, -0.34] },
   { name: "lofted drive", footwork: "front", type: "lofted", exit: 0.05, contact: [-0.84, 0.3, -0.36] },
   { name: "back-foot punch", footwork: "back", type: "ground", exit: -0.4, contact: [-0.2, 0.72, -0.45] },
