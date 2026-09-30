@@ -40,11 +40,11 @@ export interface Approach {
 }
 
 export const APPROACH: Record<BowlerStyle, Approach> = {
-  fast: { runLength: 17, vMax: 7.1, accel: 3.4 },
-  "fast-medium": { runLength: 14, vMax: 6.4, accel: 3.2 },
-  medium: { runLength: 11, vMax: 5.5, accel: 3.0 },
-  "off-spin": { runLength: 5.5, vMax: 3.3, accel: 2.6 },
-  "leg-spin": { runLength: 6, vMax: 3.5, accel: 2.6 },
+  fast: { runLength: 26, vMax: 7.1, accel: 3.4 },
+  "fast-medium": { runLength: 22, vMax: 6.4, accel: 3.2 },
+  medium: { runLength: 18, vMax: 5.5, accel: 3.0 },
+  "off-spin": { runLength: 8, vMax: 3.3, accel: 2.6 },
+  "leg-spin": { runLength: 9, vMax: 3.5, accel: 2.6 },
 };
 
 /** Speed at the start of the run: bowlers walk the first couple of steps. */

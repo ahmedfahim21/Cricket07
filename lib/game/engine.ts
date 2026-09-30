@@ -789,7 +789,8 @@ export class Game {
     this.strikerRoot.set(STRIKER_ROOT.x + offset.x, 0, STRIKER_ROOT.z + offset.z);
     this.shuffleAmount = Math.hypot(this.strikerRoot.x - oldX, this.strikerRoot.z - oldZ) > 1e-5 ? 1 : 0;
     const footwork = this.selectedFootwork(this.mode === "bowling" ? "none" : intent.footwork);
-    this.striker.bat.setFootwork(footwork === "front" ? 1 : -1);
+    // Hold guard for the tapping routine; commit the feet only at the delivery stride.
+    this.striker.bat.setFootwork(this.bowler.state === "delivery" ? (footwork === "front" ? 1 : -1) : 0);
 
     if (!this.triggered && this.bowler.state === "delivery") {
       // The bowler has bounded into his stride: trigger movement, the
@@ -1741,20 +1742,21 @@ export class Game {
     return predictContact(this.ballSnapshot(), this.world, this.strikerRoot.z - CONTACT_X[footwork] * RIG_SCALE);
   }
 
-  /** Decorative drift converges before the delivery stride; the locked point never follows the ball. */
+  /** Reveal the batting target at release and contract it over the fixed bounce point. */
   private updateMarker(dt: number): void {
     if (this.mode === "bowling" && this.bowler.state === "delivery" && !this.markerLocked) this.lockBowlingAim();
     if (this.bowler.state === "delivery" || this.phase === "flight") this.markerLocked = true;
     if (this.world.hasPitched || this.phase === "resolved") this.markerFade = Math.max(0, this.markerFade - dt * 5);
-    this.marker.visible = !!this.markerPoint && this.markerFade > 0 && (this.phase === "runup" || this.phase === "flight");
+    // A player bowling needs the aiming ring throughout the approach; a batter
+    // only gets the bounce cue once the bowler reaches the crease and releases.
+    this.marker.visible = !!this.markerPoint && this.markerFade > 0
+      && (this.phase === "flight" || (this.mode === "bowling" && this.phase === "runup"));
     if (!this.marker.visible || !this.markerPoint) return;
     this.marker.position.copy(this.markerPoint);
-    const drift = this.markerLocked || this.mode === "bowling" ? 0 : Math.max(0, 1 - this.bowler.runupProgress);
-    this.marker.position.x += Math.sin(this.phaseTime * 5) * 0.22 * drift;
-    this.marker.position.z += Math.cos(this.phaseTime * 4) * 0.32 * drift;
-    this.marker.scale.setScalar(this.markerLocked ? 1 : 1 + 0.12 * Math.sin(this.phaseTime * 7));
+    const settle = THREE.MathUtils.smoothstep(this.phaseTime, 0, 0.55);
+    this.marker.scale.setScalar(this.mode === "batting" ? 1 + 3.5 * (1 - settle) : 1);
     this.marker.material.opacity = this.markerFade * 0.9;
-    this.marker.material.color.setHex(this.markerLocked ? 0xb8ff85 : 0x7de8ff);
+    this.marker.material.color.setHex(this.mode === "batting" ? 0x55bdff : this.markerLocked ? 0xb8ff85 : 0x7de8ff);
   }
 
   private onResize = () => {

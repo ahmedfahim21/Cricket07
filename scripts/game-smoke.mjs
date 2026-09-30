@@ -59,7 +59,8 @@ try {
         }
         if (shot) key(shot, false);
         markerSeen ||= g.marker.visible;
-        if (g.markerLocked && g.markerPoint && !marker) marker = g.marker.position.clone();
+        // Locking can precede the batting cue's reveal; sample its rendered position only once visible.
+        if (g.markerLocked && g.marker.visible && g.markerPoint && !marker) marker = g.marker.position.clone();
         if (marker && g.marker.visible) markerStable &&= marker.distanceTo(g.marker.position) < 1e-6;
         if (marker && g.phase === "flight" && g.world.lastBounce && bounceError === null) bounceError = Math.hypot(marker.x - g.world.lastBounce.position.x, marker.z - g.world.lastBounce.position.z);
         if (g.phase === "flight" && !releasePosition) releasePosition = g.strikerRoot.clone();
@@ -292,7 +293,18 @@ try {
     await page.evaluate((mode) => {
       const g = window.__game;
       g.selectLevel(0); g.cameraMode = mode; g.bowl();
-      for (let i = 0; i < 500 && !g.markerLocked; i++) g.update(1 / 60);
+      // Batting cues stay hidden throughout the approach and appear large at release.
+      for (let i = 0; i < 700 && g.phase !== "flight"; i++) {
+        g.update(1 / 60);
+        if (g.phase === "runup" && g.marker.visible) throw new Error("Early batting marker");
+      }
+      if (!g.marker.visible || g.marker.scale.x < 4) throw new Error("Missing release cue");
+      const releaseScale = g.marker.scale.x;
+      const bouncePoint = g.marker.position.clone();
+      for (let i = 0; i < 12; i++) g.update(1 / 60);
+      if (g.marker.scale.x >= releaseScale || g.marker.position.distanceTo(bouncePoint) > 1e-6) {
+        throw new Error("Batting cue must shrink over a fixed bounce point");
+      }
       g.pipeline.render(1 / 60);
       g.emitTelemetry(999);
     }, camera);

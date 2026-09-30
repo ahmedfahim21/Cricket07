@@ -45,7 +45,7 @@ export function ChallengePanel({ telemetry: t, select, bowl, menu, bowling }: Pr
           <p className="mt-3 text-xl">Score {level.target} in {level.overs} overs</p>
           <p className="mt-2 text-sm text-[var(--hud-muted)]">Three wickets. Automatic footwork. Generous timing.</p>
           <div className="my-5 space-y-2 text-sm text-[var(--hud-muted)]">
-            <p><span className="text-[var(--hud-green)]">WASD</span> — move during the run-up. Watch the ring settle on the bounce point.</p>
+            <p><span className="text-[var(--hud-green)]">WASD</span> — move during the run-up. At release, the blue ring shrinks onto the bounce point.</p>
             <p><span className="text-[var(--hud-green)]">← →</span> — aim · <span className="text-[var(--hud-green)]">↑ ↓</span> — override footwork</p>
             <p><span className="text-[var(--hud-green)]">X / Space</span> — ground shot · <span className="text-[var(--hud-green)]">C</span> — loft · <span className="text-[var(--hud-green)]">Z</span> — defend</p>
             <p>Press your shot key as the timing meter enters green.</p>

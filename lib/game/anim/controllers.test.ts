@@ -2,8 +2,8 @@ import * as THREE from "three";
 import { describe, expect, it } from "vitest";
 import { BATTING_KIT, FIELDING_KIT, makePlayer } from "../assets/kit";
 import type { Footwork, ShotType } from "../input/bindings";
-import { applyPose, makePose, sweetSpot } from "./pose";
-import { BatsmanAnimator, CONTACT_X } from "./batsman";
+import { applyPose, C, makePose, sweetSpot } from "./pose";
+import { BatsmanAnimator, CONTACT_X, readyBatPose } from "./batsman";
 import { APPROACH, deliveryOrigin, simulateRelease } from "./bowler";
 import { FielderAnimator, SPRINT } from "./fielder";
 import { RunnerAnimator } from "./runner";
@@ -33,6 +33,20 @@ function batsmanInBacklift(footwork: Footwork): BatsmanAnimator {
 }
 
 describe("BatsmanAnimator", () => {
+  it("lifts and grounds the bat repeatedly, then stops tapping for the delivery", () => {
+    const sample = (time: number, trigger = 0) => readyBatPose(makePose(), {
+      time, trigger, footwork: 0, lift: 0, look: new THREE.Vector3(-18, 1.8, 0),
+    });
+    const grounded = sample(0);
+    const raised = sample(1.35 * 0.48);
+    expect(raised[C.gripY] - grounded[C.gripY]).toBeCloseTo(0.24);
+    expect(sample(1.35 * 0.8)[C.gripY]).toBeCloseTo(grounded[C.gripY]);
+    expect(sample(1.35 * 1.48)[C.gripY]).toBeCloseTo(raised[C.gripY]);
+    // At the bound, the hands settle regardless of where the tap cycle was.
+    expect(sample(1.35 * 0.48, 1)[C.gripY]).toBeCloseTo(sample(0, 1)[C.gripY]);
+    expect(raised[C.footLX]).toBe(grounded[C.footLX]);
+    expect(raised[C.footRX]).toBe(grounded[C.footRX]);
+  });
   // The engine only strikes the ball if the bat's middle is within 25 cm of
   // it at the contact instant, so every reachable contact the game can ask
   // for has to land well inside that.
@@ -160,8 +174,8 @@ describe("BowlerAnimator", () => {
     expect(hand.z).toBeGreaterThan(frontFoot - 1.5);
     // Right-arm over: the hand is close to the stumps, not out wide.
     expect(Math.abs(hand.x)).toBeLessThan(0.8);
-    expect(time).toBeGreaterThan(2.5);
-    expect(time).toBeLessThan(5);
+    expect(time).toBeGreaterThan(4.5);
+    expect(time).toBeLessThan(7);
   });
 });
 

@@ -122,6 +122,12 @@ export function readyBatPose(out: Pose, s: ReadyState): Pose {
   const fw = s.footwork;
   const fwd = Math.max(0, fw);
   const back = Math.max(0, -fw);
+  // Lift slowly, knock down briskly, then leave the toe on the turf briefly.
+  // Blend the routine away as the bowler bounds so it cannot interrupt a shot.
+  const cycle = (s.time % 1.35) / 1.35;
+  const tap = (cycle < 0.48 ? smooth(cycle / 0.48)
+    : cycle < 0.7 ? 1 - smooth((cycle - 0.48) / 0.22) : 0)
+    * 0.24 * (1 - lift) * (1 - smooth(s.trigger));
 
   // Feet. The front (left) foot strides toward the bowler and a little
   // toward the line of the ball; going back, the back (right) foot steps
@@ -141,14 +147,13 @@ export function readyBatPose(out: Pose, s: ReadyState): Pose {
     pelvisY: -0.07 - 0.05 * fwd + 0.03 * back + breath * 0.004,
     pelvisPitch: 0.12 + 0.06 * fwd,
     pelvisYaw: 0.05 * fwd,
-    torsoPitch: 0.28 + 0.12 * fwd - 0.1 * back - 0.06 * lift,
+    torsoPitch: 0.28 + 0.12 * fwd - 0.1 * back - 0.06 * lift - tap * 0.18,
     torsoYaw: -0.05 * lift,
     lookX: s.look.x, lookY: s.look.y, lookZ: s.look.z, lookW: 1,
   });
 
   // Bat: grounded (with a tap every couple of seconds while waiting) to the
   // top of the backlift, along an arc that goes up before it goes back.
-  const tap = s.lift < 0.01 ? Math.max(0, Math.sin(s.time * 3.1)) ** 6 * 0.07 : 0;
   const toe = STANCE_TOE.clone();
   toe.y += tap;
   const stanceGrip = gripForToe(toe, STANCE_Q);
