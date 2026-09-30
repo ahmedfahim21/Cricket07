@@ -1,29 +1,25 @@
 "use client";
 
 import type { MatchState } from "@/lib/game/match/state";
+import type { LiveState } from "@/lib/game/engine";
 import { oversText, scoreText } from "@/lib/game/match/state";
 
-/**
- * The score plate along the bottom — the original's `AUS 23/9` bar.
- *
- * Angled ends and a green key line, with the score itself carrying the
- * hierarchy through size rather than weight.
- */
-export function ScorePlate({ match, team }: { match: MatchState; team: string }) {
+/** Broadcast strip with the release speed, unaffected by bat contact or fielding throws. */
+export function ScorePlate({ match, team, live }: { match: MatchState; team: string; live: LiveState | null }) {
   const striker = match.batsmen[match.striker];
   const nonStriker = match.batsmen[match.nonStriker];
 
   return (
-    <div className="pointer-events-none absolute bottom-0 left-1/2 flex -translate-x-1/2 items-stretch gap-px">
-      <div className="hud-plate hud-angled flex items-center gap-3 px-6 py-1">
-        <span className="text-xs tracking-[0.2em] text-[var(--hud-muted)]">{team}</span>
-        <span className="tabular text-2xl leading-none text-[var(--hud-text)]">
+    <div className="broadcast-score pointer-events-none" aria-label="Score and delivery speed">
+      <div className="broadcast-score-team">
+        <span>{team}</span>
+        <span className="tabular">
           {scoreText(match)}
         </span>
-        <span className="tabular text-xs text-[var(--hud-muted)]">({oversText(match)})</span>
       </div>
-
-      <div className="hud-plate hud-angled-right flex items-center gap-5 px-6 py-1 text-xs">
+      <span className="broadcast-speed tabular">{live?.deliverySpeed ? Math.round(live.deliverySpeed * 2.236936) : "—"} MPH</span>
+      <span className="broadcast-overs tabular">{oversText(match)} OV</span>
+      <div className="broadcast-batsmen flex items-center gap-5 text-xs">
         <Batsman name={striker.name} runs={striker.runs} balls={striker.ballsFaced} onStrike />
         <Batsman name={nonStriker.name} runs={nonStriker.runs} balls={nonStriker.ballsFaced} />
       </div>

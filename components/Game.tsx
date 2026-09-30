@@ -90,8 +90,8 @@ export default function GameCanvas() {
           <GameplayHud live={live}>
             <DeliveryPanel live={live} telemetry={telemetry} />
             <FieldRadar live={live} />
-            {telemetry.mode === "batting" && <ShotMeter live={live} />}
-            <ScorePlate match={telemetry.match} team={telemetry.mode === "bowling" ? "IND · AI" : "IND"} />
+            <ShotMeter live={live} balls={telemetry.match.ballsThisOver} />
+            <ScorePlate match={telemetry.match} live={live} team={telemetry.mode === "bowling" ? "IND · AI" : "IND"} />
             {telemetry.mode === "batting"
               ? <ChallengePanel telemetry={telemetry} select={(level) => gameRef.current?.selectLevel(level)} bowl={() => gameRef.current?.bowl()} menu={() => gameRef.current?.showLevelSelect()} bowling={() => gameRef.current?.startBowling()} />
               : <BowlingPanel live={live} telemetry={telemetry} selectBowler={(i) => gameRef.current?.selectPlayerBowler(i)} pace={(value) => gameRef.current?.setPlayerPace(value)} bowl={() => gameRef.current?.bowl()} retry={() => gameRef.current?.startBowling()} menu={() => gameRef.current?.showLevelSelect()} nextOver={() => gameRef.current?.confirmBowlerChange()} />}
@@ -108,7 +108,7 @@ export default function GameCanvas() {
 
           {/* Controls, shown between deliveries so they never cover the ball. */}
           {telemetry.phase === "idle" && (
-            <div className="hud-plate pointer-events-none absolute bottom-4 right-4 p-3 text-xs">
+            <div className="hud-plate broadcast-controls pointer-events-none absolute right-4 p-3 text-xs">
               <div className="mb-1.5 tracking-[0.16em] text-[var(--hud-muted)]">CONTROLS</div>
               <table className="tabular">
                 <tbody>

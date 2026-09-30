@@ -96,6 +96,8 @@ export interface LiveState {
   ballY: number;
   ballZ: number;
   ballSpeed: number;
+  /** Release speed in metres per second, retained until the next delivery. */
+  deliverySpeed: number;
   /** 0..1 progress of the delivery from release to reaching the striker. */
   approach: number;
   /** Set once the ball has pitched. */
@@ -347,6 +349,7 @@ export class Game {
     ballY: 0,
     ballZ: 0,
     ballSpeed: 0,
+    deliverySpeed: 0,
     approach: 0,
     pitchedLength: null,
     lastBand: null,
@@ -642,6 +645,7 @@ export class Game {
     if (this.mode === "bowling" && !this.markerLocked) this.lockBowlingAim();
     const d = buildDelivery({ ...this.plan, releaseX: hand.x, releaseHeight: hand.y, releaseZ: hand.z });
     this.world.release(d);
+    this.live.deliverySpeed = Math.hypot(d.velocity.x, d.velocity.y, d.velocity.z);
     // Read actual release for batting assistance; the already-locked marker stays fixed.
     this.bounceZ = predictBounce({ ...d, shine: 1 }, this.world)?.position.z ?? null;
     this.holder = null;
@@ -1637,6 +1641,7 @@ export class Game {
     this.live.lastBand = null;
     this.live.shotFeedback = "";
     this.match = newInnings(["Sharma", "Patel", "Khan", "Mitchell", "Okafor", "Silva", "Brennan"]);
+    this.live.deliverySpeed = 0;
     this.style = CHALLENGES[level].styles[0];
     this.lastEvent = "Press R to bowl";
     this.resetPositions();
@@ -1666,6 +1671,7 @@ export class Game {
     this.live.lastBand = null;
     this.live.shotFeedback = "";
     this.previousAiSpeed = null;
+    this.live.deliverySpeed = 0;
     this.bowlingAim = { ...DEFAULT_BOWLING_AIM };
     this.match = newInnings(["Sharma", "Patel", "Khan", "Singh", "Rao", "Das", "Kumar"]);
     this.style = BOWLERS[this.playerBowler].style;

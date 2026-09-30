@@ -34,10 +34,7 @@ canvas {
   height: 100vh;
 }
 
-/*
- * Hierarchy in this HUD comes from size, colour and the angled plates, not
- * from font weight — the original's scoreboard type is uniform.
- */
+/* Utility panels use a quiet plate; the broadcast HUD has its own metallic trim. */
 .hud-plate {
   background: var(--hud-plate);
   border: 1px solid var(--hud-plate-edge);
@@ -55,4 +52,123 @@ canvas {
 
 .tabular {
   font-variant-numeric: tabular-nums;
+}
+
+/* Shared anchors keep the gauge and score strip together across viewport sizes. */
+main {
+  --broadcast-baseline: 6.3vh;
+  --broadcast-strip: clamp(38px, 5.5vh, 58px);
+  --broadcast-inset: clamp(20px, 4.7vw, 90px);
+}
+
+.broadcast-score {
+  position: absolute;
+  bottom: var(--broadcast-baseline);
+  left: 0;
+  width: 100%;
+  height: var(--broadcast-strip);
+  display: flex;
+  align-items: center;
+  gap: clamp(14px, 1.7vw, 32px);
+  border-block: 3px solid #20271ed9;
+  background: linear-gradient(#7d80736b, #262824d9 24%, #3e4039d4 78%, #92918080);
+  box-shadow: 0 2px 2px #0009, inset 0 2px 1px #d4d7bd66;
+  font-family: Arial, Helvetica, sans-serif;
+  text-shadow: 1px 2px 2px #16230d;
+}
+
+.broadcast-score-team {
+  display: flex;
+  align-items: center;
+  justify-content: space-evenly;
+  gap: 18px;
+  width: clamp(240px, 27vw, 510px);
+  height: calc(100% + 12px);
+  flex-shrink: 0;
+  padding: 0 24px 0 var(--broadcast-inset);
+  border: 3px solid #111c0d;
+  border-left: 0;
+  border-radius: 0 60px 60px 0;
+  background: linear-gradient(#517e3d, #75bd4c 24%, #438f2a 48%, #236414 75%, #33592a);
+  box-shadow: inset 0 2px 2px #d5eac199, inset 0 -3px 3px #0c270b;
+  font-size: clamp(22px, 2.25vw, 38px);
+  font-weight: 900;
+  letter-spacing: .035em;
+  color: #f8ffe9;
+}
+
+.broadcast-speed {
+  color: #ffe163;
+  font-size: clamp(18px, 1.8vw, 32px);
+  font-weight: 900;
+  letter-spacing: .06em;
+  white-space: nowrap;
+}
+
+.broadcast-overs { color: #e0e5d6; font-size: 12px; white-space: nowrap; }
+.broadcast-batsmen { margin-left: auto; margin-right: var(--broadcast-inset); }
+.broadcast-meter {
+  position: absolute;
+  left: var(--broadcast-inset);
+  bottom: calc(var(--broadcast-baseline) + var(--broadcast-strip) + 15px);
+  width: clamp(140px, 15.4vw, 265px);
+}
+.broadcast-over { position: absolute; left: 7%; right: 3%; bottom: 9%; display: flex; gap: 6px; }
+.broadcast-over span {
+  width: 14%;
+  aspect-ratio: 1.1;
+  border: 2px solid #29332b;
+  border-radius: 50%;
+  background: radial-gradient(circle at 65% 30%, #fff 0, #e6e9dc 48%, #939c91 64%, #2d352e 72%, #d8dfcf 79%);
+  box-shadow: 1px 1px 2px #000;
+  transform: rotate(-25deg);
+}
+.broadcast-over span::after { content: ""; display: block; width: 42%; height: 90%; border-left: 2px solid #52604f; border-radius: 50%; margin-left: 28%; }
+.broadcast-over .is-bowled { filter: brightness(.45); }
+.broadcast-radar { position: absolute; right: var(--broadcast-inset); top: 4.5vh; width: clamp(160px, 18vw, 320px); }
+.broadcast-delivery {
+  position: absolute;
+  left: var(--broadcast-inset);
+  top: 5vh;
+  width: clamp(210px, 20vw, 350px);
+  height: clamp(145px, 20vh, 210px);
+  display: flex;
+  gap: 8px;
+  padding: 10px;
+  border: 4px solid #121b13;
+  border-radius: 18px;
+  background: linear-gradient(120deg, #596455, #101910 20%, #111910 85%, #717968);
+  box-shadow: 2px 3px 2px #0007, inset 1px 2px 2px #a3b09b;
+}
+.broadcast-delivery-bars { padding-top: 16px; padding-bottom: 2px; }
+.broadcast-delivery-screen {
+  flex: 1;
+  padding: 10px 14px;
+  border: 3px solid #727c69;
+  background: linear-gradient(145deg, #536349e6, #263b2ae8);
+  box-shadow: inset 0 0 8px #0009;
+}
+.broadcast-lamps { position: absolute; top: -9px; left: 31%; display: flex; gap: 6px; }
+.broadcast-lamps i { width: 24px; height: 20px; display: grid; place-items: center; border-radius: 50%; border: 2px solid #10170f; background: radial-gradient(ellipse at 60% 10%, #b0b8a9, #11190e 45%, #020501); font-size: 11px; font-style: normal; }
+.broadcast-controls { bottom: calc(var(--broadcast-baseline) + var(--broadcast-strip) + 22px); }
+.broadcast-bowling-panel { right: var(--broadcast-inset); top: 29vh; max-height: 48vh; overflow-y: auto; }
+/* Bowling already exposes its key hints in the interactive panel. */
+main:has(.broadcast-bowling-panel) .broadcast-controls { display: none; }
+
+@media (max-width: 900px) {
+  .broadcast-batsmen { display: none; }
+  .broadcast-delivery { width: 195px; height: 145px; }
+  .broadcast-delivery-screen { padding: 6px; }
+  .broadcast-radar { width: 155px; }
+  .broadcast-bowling-panel { width: 235px; top: 32vh; }
+}
+@media (max-width: 600px) {
+  main { --broadcast-inset: 12px; --broadcast-baseline: 3vh; }
+  .broadcast-score-team { width: 190px; font-size: 22px; }
+  .broadcast-overs { display: none; }
+  .broadcast-delivery { top: 110px; width: 175px; height: 135px; }
+  .broadcast-radar { top: 112px; width: 135px; }
+  .broadcast-controls { max-width: 55vw; font-size: 9px; padding: 8px; }
+  .broadcast-meter { width: 130px; }
+  .broadcast-bowling-panel { top: 260px; max-height: calc(100vh - 360px); width: 210px; }
 }

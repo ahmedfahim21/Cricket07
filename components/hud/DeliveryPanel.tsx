@@ -19,36 +19,33 @@ export function DeliveryPanel({
   live: LiveState | null;
   telemetry: Telemetry | null;
 }) {
-  // Only meaningful while the ball is actually in play; parked between
-  // deliveries it is just noise.
-  const inPlay = live !== null && live.phase !== "idle";
-  const speedKph = inPlay ? Math.round(live.ballSpeed * 3.6) : 0;
-  const bars = 10;
+  // Retain the release reading so bat contact cannot turn it into shot speed.
+  const speedKph = Math.round((live?.deliverySpeed ?? 0) * 3.6);
+  const bars = 16;
   // Full bar at 150kph, which is about as quick as anyone bowls.
   const litBars = Math.round((Math.min(speedKph, 150) / 150) * bars);
 
   return (
-    <div className="hud-plate pointer-events-none absolute left-4 top-4 flex gap-2 p-2">
-      <div className="flex flex-col-reverse gap-[3px]">
+    <div className="broadcast-delivery pointer-events-none">
+      <div className="broadcast-lamps" aria-hidden="true"><i>●</i><i /><i /><i /></div>
+      <div className="broadcast-delivery-bars flex flex-col-reverse gap-[3px]">
         {Array.from({ length: bars }, (_, i) => (
           <div
             key={i}
-            className="h-[7px] w-[9px]"
+            className="min-h-0 flex-1 w-[9px]"
             style={{
               background:
                 i < litBars
-                  ? i > bars - 4
-                    ? "var(--hud-amber)"
-                    : "var(--hud-green)"
+                  ? "linear-gradient(#fff0a2, #e6c644 55%, #9a7825)"
                   : "rgba(120,150,120,0.16)",
             }}
           />
         ))}
       </div>
 
-      <div className="flex w-[150px] flex-col justify-between text-xs">
+      <div className="broadcast-delivery-screen flex flex-col justify-between text-xs">
         <div>
-          <div className="tracking-[0.16em] text-[var(--hud-muted)]">BOWLING</div>
+          <div className="tracking-[0.16em] text-[var(--hud-muted)]">BOWLER</div>
           <div className="text-sm text-[var(--hud-text)]">
             {telemetry?.bowlerStyle.replace("-", " ") ?? "—"}
           </div>

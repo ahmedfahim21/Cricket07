@@ -25,7 +25,7 @@ export function ChallengePanel({ telemetry: t, select, bowl, menu, bowling }: Pr
       <div className="mt-1 text-lg tabular-nums">{c.runsNeeded} from {c.ballsRemaining} balls</div>
       <div className="text-xs text-[var(--hud-muted)]">{c.wicketsRemaining} wickets left</div>
     </div>}
-    {!overlay && t.phase === "idle" && <button className={`${button} absolute right-4 top-4`} onClick={menu}>Levels</button>}
+    {!overlay && t.phase === "idle" && <button className={`${button} absolute right-4 top-1/3`} onClick={menu}>Levels</button>}
     {overlay && <div className="absolute inset-0 z-20 flex items-center justify-center overflow-y-auto bg-[#07110c]/80 p-5">
       <section aria-label="Challenge ladder" className="hud-plate my-auto w-full max-w-xl rounded-lg p-6 sm:p-8">
         <p className="text-xs tracking-[0.24em] text-[var(--hud-green)]">CRICKET · CHALLENGE LADDER</p>

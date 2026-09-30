@@ -62,7 +62,7 @@ export function BowlingPanel({ live, telemetry: t, selectBowler, pace, bowl, ret
       <div className="mt-1 text-lg tabular-nums">AI needs {b.runsNeeded} from {b.ballsRemaining} balls</div>
       <div className="text-xs text-[var(--hud-muted)]">{b.wicketsRemaining} wickets to win · {t.match.extras} extras</div>
     </div>
-    <section aria-label="Bowling controls" className="hud-plate absolute bottom-5 left-4 w-72 max-w-[calc(100vw-2rem)] rounded p-4">
+    <section aria-label="Bowling controls" className="hud-plate broadcast-bowling-panel absolute w-72 max-w-[calc(100vw-2rem)] rounded p-4">
       {selectors}
       <div className="mt-4 border-t border-white/10 pt-3 text-xs">
         <div className="font-bold tracking-widest text-[var(--hud-green)]">{t.phase === "idle" ? "READY TO BOWL" : t.phase === "runup" ? live.bowling.locked ? "DELIVERY LOCKED" : "AIM YOUR DELIVERY" : "BALL IN PLAY"}</div>

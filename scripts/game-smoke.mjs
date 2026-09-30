@@ -306,7 +306,7 @@ try {
   await page.getByRole("button", { name: "Try bowling · defend 24 runs" }).click();
   await page.getByRole("heading", { name: "Defend the total" }).waitFor();
   await page.getByLabel("YOUR BOWLER").selectOption("2");
-  await page.getByLabel("Delivery pace").fill("45");
+  await page.getByRole("slider", { name: "Delivery pace", exact: true }).fill("45");
   await page.screenshot({ path: "/private/tmp/cricket-bowling-setup.png" });
   await page.evaluate(() => cancelAnimationFrame(window.__game.raf));
   await page.getByRole("button", { name: "Start bowling · R" }).click();
