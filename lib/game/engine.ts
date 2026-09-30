@@ -45,17 +45,24 @@ import { CricketWorld, initPhysics } from "./physics/world";
 import { predictPath, pathAt, solveThrow, type PathPoint } from "./physics/predict";
 import { v3 } from "./physics/vec3";
 import { classifyLength, type Length } from "./physics/pitch";
-import { buildDelivery, planFor, varyDelivery, type BowlerStyle, type DeliveryPlan } from "./match/bowling";
-import { idealPressLead, resolveShot, type ShotOutcome, type TimingBand } from "./match/shot";
+import { buildDelivery, previewBounce, type BowlerStyle, type DeliveryPlan } from "./match/bowling";
+import { effectiveFootwork, resolveShot, type ShotOutcome, type TimingBand } from "./match/shot";
+import { predictBounce, predictContact, lengthForStance, type ContactPrediction } from "./match/contact";
+import { CHALLENGES, challengeDelivery, challengeStatus, freshProgress, loadProgress, recordWin, PROGRESS_KEY, type Progress } from "./match/challenges";
+import { moveAtCrease } from "./input/movement";
 import { RUN_TIME, fieldFor, runsAvailable, type FieldPosition } from "./match/fielding";
 import { applyBall, newInnings, toOutcome, type Dismissal, type MatchState } from "./match/state";
 import { BattingController } from "./input/controller";
-import type { ShotType } from "./input/bindings";
-import { applyPose, makePose, sweetSpot } from "./anim/pose";
-import { APPROACH, BowlerAnimator, deliveryOrigin } from "./anim/bowler";
+import type { Footwork, ShotType } from "./input/bindings";
+import { C, applyPose, copyPose, makePose, sweetSpot } from "./anim/pose";
+import { APPROACH, BowlerAnimator, deliveryOrigin, simulateRelease } from "./anim/bowler";
 import { BatsmanAnimator, CONTACT_X } from "./anim/batsman";
 import { FielderAnimator, JOG, SPRINT, faceYaw } from "./anim/fielder";
 import { RunnerAnimator } from "./anim/runner";
+import { umpireSignalPose } from "./anim/umpire";
+import { BOUNDARY_CUT_TIME, BOUNDARY_HOLD_TIME, UMPIRE_SIGNAL_START, type BoundaryRuns } from "./presentation/boundary";
+import { dismissedBatsman, momentShot, nextReaction, WICKET_HOLD_TIME, type MatchMoment, type MomentShot } from "./presentation/moments";
+import { ReactionScene } from "./presentation/reactions";
 
 export type Phase = "idle" | "runup" | "flight" | "resolved" | "settling";
 
@@ -68,6 +75,16 @@ export type Phase = "idle" | "runup" | "flight" | "resolved" | "settling";
  * scene does.
  */
 export interface LiveState {
+  radarForwardX: number;
+  radarForwardZ: number;
+  boundaryRuns: BoundaryRuns | null;
+  celebrationTime: number;
+  moment: MatchMoment | null;
+  momentShot: MomentShot | null;
+  /** Seconds from the ideal press; negative is early, null means no contact ahead. */
+  timingError: number | null;
+  shotFeedback: string;
+  footwork: Footwork;
   phase: Phase;
   ballX: number;
   ballY: number;
@@ -87,6 +104,7 @@ export interface LiveState {
 const TELEMETRY_HZ = 10;
 
 export interface Telemetry {
+  challenge: ReturnType<typeof challengeStatus> & { level: number; screen: "select" | "ready" | "playing"; progress: Progress };
   match: MatchState;
   phase: Phase;
   lastEvent: string;
@@ -145,6 +163,8 @@ const BOWLER_LINE_X = -0.45;
 const FRONT_FOOT_Z = CREASE_Z - POPPING_CREASE_OFFSET + 0.2;
 
 const UMPIRE_AT = new THREE.Vector3(0.7, 0, CREASE_Z + 2.2);
+const UMPIRE_SIGNAL_CAMERA = UMPIRE_AT.clone().add(new THREE.Vector3(-4.5, 2.2, -2.2));
+const UMPIRE_SIGNAL_YAW = faceYaw(-4.5, -2.2);
 
 /** The keeper takes throws standing up to the stumps, gloves over the bails. */
 const KEEPER_AT_STUMPS = new THREE.Vector3(0, 0, STRIKER_STUMPS_Z - 0.75);
@@ -229,15 +249,36 @@ export class Game {
   private stumpMeshes: THREE.Mesh[] = [];
 
   private bowler!: BowlerAnimator;
+  private previewRig!: PlayerRig;
+  private marker!: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
+  private markerPoint: THREE.Vector3 | null = null;
+  private markerLocked = false;
+  private markerFade = 0;
+  private previewRelease = new Map<BowlerStyle, THREE.Vector3>();
+  private bounceZ: number | null = null;
+  private strikerRoot = STRIKER_ROOT.clone();
+  private shuffleTime = 0;
+  private shuffleAmount = 0;
+  private shufflePose = makePose();
+  private level = 0;
+  private screen: "select" | "ready" | "playing" = "select";
+  private progress: Progress = freshProgress();
   private batsmen: BatEntity[] = [];
   private fielders: FielderAnimator[] = [];
   private umpire!: FielderAnimator;
+  private umpirePose = makePose();
+  private boundaryCameraActive = false;
+  private reactions!: ReactionScene;
+  private reactionCameraShot: MomentShot | null = null;
+  private cosmeticRand = mulberry32(7062026);
+  private previousBowlerReaction = -1;
+  private previousBatterReaction = -1;
   private keeperIndex = 0;
   private field: FieldPosition[] = [];
 
   private rand = mulberry32(20070607);
   private hand: Handedness = "right";
-  private style: BowlerStyle = "fast-medium";
+  private style: BowlerStyle = "medium";
 
   private phase: Phase = "idle";
   private phaseTime = 0;
@@ -263,6 +304,7 @@ export class Game {
   private thrown = false;
   private boundary: { six: boolean } | null = null;
   private bouncedSinceShot = false;
+  private bouncesAtContact = 0;
   private runsDecided = false;
   private keeperTaking = false;
   private dead: { dismissal: Dismissal | null; offTheBat: boolean } | null = null;
@@ -273,6 +315,15 @@ export class Game {
   private settleTimer = 0;
 
   readonly live: LiveState = {
+    radarForwardX: 0,
+    radarForwardZ: 1,
+    boundaryRuns: null,
+    celebrationTime: 0,
+    moment: null,
+    momentShot: null,
+    timingError: null,
+    shotFeedback: "",
+    footwork: "front",
     phase: "idle",
     ballX: 0,
     ballY: 0,
@@ -290,6 +341,7 @@ export class Game {
     opts: { onTelemetry?: (t: Telemetry) => void } = {}
   ) {
     this.onTelemetry = opts.onTelemetry;
+    try { this.progress = loadProgress(window.localStorage); } catch { /* Storage may be disabled. */ }
     this.match = newInnings(["Sharma", "Patel", "Khan", "Mitchell", "Okafor", "Silva", "Brennan"]);
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
@@ -375,6 +427,8 @@ export class Game {
     this.scene.add(bowlerRig.root);
     this.bowler = new BowlerAnimator(bowlerRig);
     this.bowler.onRelease = (hand) => this.release(hand);
+    // Preview choreography must never disturb the visible bowler's pose.
+    this.previewRig = makePlayer({ role: "bowler", colours: FIELDING_KIT });
 
     const umpireRig = makePlayer({ role: "umpire" });
     this.scene.add(umpireRig.root);
@@ -388,6 +442,8 @@ export class Game {
       if (f.keeper) this.keeperIndex = i;
     });
     this.live.fielders = this.field.map((f) => ({ x: f.x, z: f.z }));
+    this.reactions = new ReactionScene();
+    this.scene.add(this.reactions.group);
 
     /*
      * Cel look. Everything above was authored with ordinary PBR materials;
@@ -396,6 +452,12 @@ export class Game {
      */
     const cel = createCelifier({ shadowTint: new THREE.Color(DAY_MATCH_PRESET.celShadowTint) });
     cel.apply(this.scene);
+    this.marker = new THREE.Mesh(new THREE.RingGeometry(0.26, 0.34, 48), new THREE.MeshBasicMaterial({
+      color: 0x7de8ff, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide,
+    }));
+    this.marker.rotation.x = -Math.PI / 2;
+    this.marker.visible = false;
+    this.scene.add(this.marker);
     this.pipeline = createRenderPipeline(this.renderer, this.scene, this.camera, sun);
   }
 
@@ -423,6 +485,19 @@ export class Game {
    * position, bowler at his mark with the ball, fielders home.
    */
   private resetPositions(): void {
+    this.live.moment = null;
+    this.live.momentShot = null;
+    this.reactionCameraShot = null;
+    this.live.boundaryRuns = null;
+    this.live.celebrationTime = 0;
+    this.boundaryCameraActive = false;
+    this.strikerRoot.copy(STRIKER_ROOT);
+    this.shuffleAmount = 0;
+    this.markerPoint = null;
+    this.markerLocked = false;
+    this.markerFade = 0;
+    this.bounceZ = null;
+    this.live.timingError = null;
     const striker = this.entityFor(this.match.striker, this.match.nonStriker);
     const other = this.batsmen.find((b) => b !== striker)!;
     other.index = this.match.nonStriker;
@@ -448,6 +523,8 @@ export class Game {
     });
 
     this.world.deaden();
+    this.world.hasPitched = false;
+    this.world.lastBounce = null;
     this.world.resetStumps();
     this.holder = { kind: "bowler" };
     this.plan = null;
@@ -493,17 +570,33 @@ export class Game {
    * ---------------------------------------------------------------- */
 
   bowl(): void {
-    if (this.phase !== "idle" || this.match.complete) return;
+    if (this.phase !== "idle" || this.screen === "select" || challengeStatus(CHALLENGES[this.level], this.match).result !== "playing") return;
+    this.screen = "playing";
     this.phase = "runup";
     this.phaseTime = 0;
+    // The previous fade has finished; chase cameras belong to this new ball.
+    this.resetDone = false;
     this.lastEvent = "";
     this.live.lastBand = null;
+    this.live.shotFeedback = "";
 
-    const base = planFor(this.style, { targetLength: 5, targetLine: -0.15 });
-    const plan = varyDelivery(base, this.rand);
-    // Some deliveries swing; whether they do is set at release, not per frame.
-    plan.seamAngle = (this.rand() - 0.5) * 0.5;
+    const plan = challengeDelivery(CHALLENGES[this.level], this.match.overs, this.rand);
+    this.setBowlerStyle(plan.style);
     this.plan = plan;
+
+    const approach = APPROACH[this.style];
+    this.bowler.setup(approach, deliveryOrigin(approach, FRONT_FOOT_Z), BOWLER_LINE_X, STUMPS_LOOK);
+    let hand = this.previewRelease.get(this.style);
+    if (!hand) {
+      hand = simulateRelease(this.previewRig, approach, deliveryOrigin(approach, FRONT_FOOT_Z), BOWLER_LINE_X, STUMPS_LOOK).hand;
+      this.previewRelease.set(this.style, hand);
+    }
+    const release = buildDelivery({ ...plan, releaseX: hand.x, releaseHeight: hand.y, releaseZ: hand.z });
+    const bounce = previewBounce(release, this.world.pitch, this.world.outfield);
+    this.markerPoint = bounce ? new THREE.Vector3(bounce.x, 0.04, bounce.z) : null;
+    this.markerLocked = false;
+    this.markerFade = 1;
+    this.bounceZ = bounce?.z ?? null;
 
     this.bowler.startRunup();
     for (const f of this.fielders) f.walkIn();
@@ -518,6 +611,8 @@ export class Game {
     if (!this.plan) return;
     const d = buildDelivery({ ...this.plan, releaseX: hand.x, releaseHeight: hand.y, releaseZ: hand.z });
     this.world.release(d);
+    // Read actual release for batting assistance; the already-locked marker stays fixed.
+    this.bounceZ = predictBounce({ ...d, shine: 1 }, this.world)?.position.z ?? null;
     this.holder = null;
     this.phase = "flight";
     this.phaseTime = 0;
@@ -586,7 +681,7 @@ export class Game {
 
     switch (this.phase) {
       case "runup":
-        this.updateRunup();
+        this.updateRunup(dt);
         break;
       case "flight":
         this.updateFlight(dt);
@@ -610,16 +705,23 @@ export class Game {
       this.contact();
     }
     this.updatePossession();
+    this.updateMarker(dt);
     this.syncVisuals();
     this.updateCamera(dt);
     this.emitTelemetry(dt);
   }
 
-  private updateRunup(): void {
+  private updateRunup(dt: number): void {
     // Footwork can be premeditated, but a shot press cannot be made before
     // the ball is out of the hand.
     const { intent } = this.input.consume();
-    this.striker.bat.setFootwork(intent.footwork === "front" ? 1 : intent.footwork === "back" ? -1 : 0);
+    const offset = moveAtCrease({ x: this.strikerRoot.x - STRIKER_ROOT.x, z: this.strikerRoot.z - STRIKER_ROOT.z }, intent.moveX, intent.moveForward, dt, this.aimScreenSign());
+    const oldX = this.strikerRoot.x;
+    const oldZ = this.strikerRoot.z;
+    this.strikerRoot.set(STRIKER_ROOT.x + offset.x, 0, STRIKER_ROOT.z + offset.z);
+    this.shuffleAmount = Math.hypot(this.strikerRoot.x - oldX, this.strikerRoot.z - oldZ) > 1e-5 ? 1 : 0;
+    const footwork = this.selectedFootwork(intent.footwork);
+    this.striker.bat.setFootwork(footwork === "front" ? 1 : -1);
 
     if (!this.triggered && this.bowler.state === "delivery") {
       // The bowler has bounded into his stride: trigger movement, the
@@ -642,8 +744,11 @@ export class Game {
 
     const { intent, shotAt } = this.input.consume();
     if (!this.shotPlayed) {
-      this.striker.bat.setFootwork(intent.footwork === "front" ? 1 : intent.footwork === "back" ? -1 : 0);
-      if (intent.shot) this.playShot(intent.shot, intent, shotAt);
+      const footwork = this.selectedFootwork(intent.footwork);
+      this.striker.bat.setFootwork(footwork === "front" ? 1 : -1);
+      const prediction = this.contactPrediction(footwork);
+      this.live.timingError = prediction?.timingError ?? null;
+      if (intent.shot) this.playShot(intent.shot, { ...intent, footwork }, shotAt, prediction);
     }
 
     // No shot offered as the ball arrives: leave it, bat raised.
@@ -693,45 +798,28 @@ export class Game {
    * integrates the same forces as the world. Timing is measured against the
    * press timestamp rather than the frame it was read on.
    */
-  private playShot(type: ShotType, intent: ReturnType<BattingController["peek"]>, shotAt: number): void {
+  private playShot(type: ShotType, intent: ReturnType<BattingController["peek"]>, shotAt: number, prediction: ContactPrediction | null): void {
     this.shotPlayed = true;
     const pressAgo = Math.max(0, (performance.now() - shotAt) / 1000);
     const footwork = intent.footwork;
     const bat = this.striker.bat;
 
-    // Find when the ball crosses the contact plane for this footwork.
-    const zPlane = STRIKER_ROOT.z - CONTACT_X[footwork] * RIG_SCALE;
-    let firstBounce: PathPoint | null = null;
-    let at: PathPoint | null = null;
-    predictPath(this.ballSnapshot(), { pitch: this.world.pitch, outfield: this.world.outfield, maxTime: 2 }, (p) => {
-      if (!firstBounce && !this.world.hasPitched && p.position.y <= BALL_RADIUS + 1e-4) firstBounce = p;
-      if (p.position.z <= zPlane) {
-        at = p;
-        return true;
-      }
-      return false;
-    });
-    if (!at) {
+    if (!prediction) {
       // Already past the plane: far too late.
       this.live.lastBand = "missed";
+      this.live.shotFeedback = "Too late";
       bat.leave();
       return;
     }
-    const hit = at as PathPoint;
+    const { hit, speed } = prediction;
     const tBall = hit.t;
-    const speed = Math.hypot(hit.velocity.x, hit.velocity.y, hit.velocity.z);
-    const lead = tBall + pressAgo;
-    const timingError = idealPressLead(speed) - lead;
-
-    let length: Length = this.live.pitchedLength ?? "full-toss";
-    if (!this.live.pitchedLength && firstBounce) {
-      length = classifyLength((firstBounce as PathPoint).position.z - STRIKER_STUMPS_Z);
-    }
+    const timingError = prediction.timingError - pressAgo;
+    const length = lengthForStance(this.bounceZ, this.strikerRoot.z - STRIKER_ROOT.z);
 
     const outcome = resolveShot(
       {
         length,
-        lineAtCrease: hit.position.x,
+        lineAtCrease: hit.position.x - (this.strikerRoot.x - STRIKER_ROOT.x),
         heightAtCrease: Math.max(BALL_RADIUS, hit.position.y),
         speed,
         hand: this.hand,
@@ -741,8 +829,10 @@ export class Game {
 
     const contact = this.toStrikerRoot(new THREE.Vector3(hit.position.x, hit.position.y, hit.position.z));
     // Out of reach: too wide or too high to get bat on. He still plays at it.
-    const shoulder = new THREE.Vector3(-0.15, 1.38, -0.05);
-    const reachable = contact.distanceTo(shoulder) < 1.32 && contact.y > 0;
+    // A static shoulder-radius test rejected low full balls even though the
+    // batsman can bend and stride to them. Limit the playable envelope here;
+    // the fitted bat-to-ball gap at contact remains the final reach check.
+    const reachable = contact.y > 0 && contact.y < 1.9 && Math.abs(contact.z + 0.05) < 1.1;
 
     // The bat is timed to reach the ball's point when the ball does. A miss
     // on timing puts the bat there too early or too late instead.
@@ -763,14 +853,15 @@ export class Game {
       if (!reachable) {
         console.warn("[shot] ball out of reach", {
           contact: contact.toArray().map((v) => +v.toFixed(3)),
-          fromShoulder: +contact.distanceTo(shoulder).toFixed(3),
         });
       }
       this.live.lastBand = "missed";
+      this.live.shotFeedback = !reachable ? "Out of reach" : timingError < 0 ? "Too early" : "Too late";
       this.lastEvent = "Beaten";
       return;
     }
     this.live.lastBand = outcome.band;
+    this.live.shotFeedback = outcome.band === "perfect" ? "Perfect" : outcome.band === "good" ? "Good" : timingError < 0 ? "Early" : "Late";
     this.pending = { outcome, type, at: new THREE.Vector3(hit.position.x, hit.position.y, hit.position.z) };
   }
 
@@ -802,6 +893,7 @@ export class Game {
         contactT: +s.bat.contactT.toFixed(3),
       });
       this.live.lastBand = "missed";
+      this.live.shotFeedback = "Out of reach";
       this.lastEvent = "Beaten";
       return;
     }
@@ -821,6 +913,7 @@ export class Game {
     this.phaseTime = 0;
     this.bouncedSinceShot = false;
     this.planFielding(true);
+    this.bouncesAtContact = this.world.bounceCount;
   }
 
   /* ---------------------------------------------------------------- *
@@ -973,7 +1066,7 @@ export class Game {
     const ball = this.world.ball;
     const bp = _v1.set(ball.position.x, ball.position.y, ball.position.z);
 
-    if (ball.position.y <= BALL_RADIUS * 1.5) this.bouncedSinceShot = true;
+    if (this.world.bounceCount > this.bouncesAtContact) this.bouncedSinceShot = true;
 
     // The striker sets off once his shot is through.
     const s = this.striker;
@@ -990,8 +1083,10 @@ export class Game {
     if (!this.boundary && !this.holder && isBeyondBoundary(ball.position.x, ball.position.z)) {
       this.boundary = { six: !this.bouncedSinceShot };
       this.lastEvent = this.boundary.six ? "SIX" : "FOUR";
+      this.live.boundaryRuns = this.boundary.six ? 6 : 4;
+      this.live.celebrationTime = 0;
       if (this.chaser >= 0) this.fielders[this.chaser].lookAt(bp);
-      this.endBall({ dismissal: null, offTheBat: true }, undefined, 1.6);
+      this.endBall({ dismissal: null, offTheBat: true }, undefined, BOUNDARY_HOLD_TIME);
       return;
     }
 
@@ -1113,13 +1208,25 @@ export class Game {
   }
 
   /**
-   * The ball is dead. Score it now; the picture holds for `hold` seconds so
-   * the result can be seen, then cuts to black and back for the next ball.
+   * The ball is dead. Hold the result/cutaways before scoring once at the
+   * fade to black, then reset for the next delivery.
    */
   private endBall(dead: { dismissal: Dismissal | null; offTheBat: boolean }, event?: string, hold = 1.0): void {
     if (this.dead) return;
     this.dead = dead;
     this.deadTimer = hold;
+    if (dead.dismissal || this.live.boundaryRuns !== null) {
+      this.previousBowlerReaction = nextReaction(this.previousBowlerReaction, this.cosmeticRand);
+      this.previousBatterReaction = nextReaction(this.previousBatterReaction, this.cosmeticRand);
+      this.live.moment = {
+        kind: dead.dismissal ? "wicket" : this.live.boundaryRuns === 6 ? "six" : "four",
+        bowlerVariant: this.previousBowlerReaction,
+        batterVariant: this.previousBatterReaction,
+        dismissed: dead.dismissal ? dismissedBatsman(this.match, dead.dismissal) : null,
+      };
+      this.live.celebrationTime = 0;
+      if (dead.dismissal) this.deadTimer = WICKET_HOLD_TIME;
+    }
     this.phase = "settling";
     this.phaseTime = 0;
     this.fadeTimer = 0;
@@ -1130,6 +1237,7 @@ export class Game {
 
   private updateSettling(dt: number): void {
     this.settleTimer += dt;
+    if (this.live.moment !== null) this.live.celebrationTime = this.settleTimer;
     this.input.consume();
 
     // Batsmen still complete a run already under way.
@@ -1172,6 +1280,14 @@ export class Game {
       offTheBat: dead.offTheBat,
     });
     this.match = applyBall(this.match, outcome);
+    const status = challengeStatus(CHALLENGES[this.level], this.match);
+    if (status.result !== "playing") {
+      this.match = { ...this.match, complete: true };
+      if (status.result === "won") {
+        this.progress = recordWin(this.progress, CHALLENGES[this.level], this.match.runs);
+        try { window.localStorage.setItem(PROGRESS_KEY, JSON.stringify(this.progress)); } catch { /* Keep session progress when storage is unavailable. */ }
+      }
+    }
     if (!this.lastEvent || this.lastEvent === "Beaten" || this.lastEvent === "Dropped") {
       this.lastEvent = this.describe(outcome, dead.dismissal);
     }
@@ -1200,26 +1316,52 @@ export class Game {
 
     for (const b of this.batsmen) {
       if (b.mode === "bat") {
-        b.rig.root.position.copy(STRIKER_ROOT);
+        b.rig.root.position.copy(this.strikerRoot);
         b.rig.root.rotation.set(0, STRIKER_YAW, 0);
         b.rig.root.updateMatrixWorld(true);
         b.bat.look.copy(b.rig.root.worldToLocal(watch.clone()));
         b.bat.update(dt);
-        applyPose(b.rig, b.bat.pose);
+        if (this.phase === "runup" && this.shuffleAmount > 0) {
+          this.shuffleTime += dt * 15;
+          copyPose(this.shufflePose, b.bat.pose);
+          // Alternate short foot lifts while retaining the ready batting stance.
+          this.shufflePose[C.footLY] += Math.max(0, Math.sin(this.shuffleTime)) * 0.055;
+          this.shufflePose[C.footRY] += Math.max(0, -Math.sin(this.shuffleTime)) * 0.055;
+          applyPose(b.rig, this.shufflePose);
+        } else applyPose(b.rig, b.bat.pose);
       } else {
         b.run.update(dt);
       }
     }
 
     const live = this.phase !== "idle";
-    this.umpire.lookAt(live ? watch : null);
+    this.umpire.lookAt(live && this.live.boundaryRuns === null ? watch : null);
+    if (this.live.boundaryRuns !== null) {
+      // Turn toward the scorers during the wide shot, before the camera cuts.
+      const turn = Math.min(1, this.live.celebrationTime / 0.6);
+      this.umpire.yaw = UMPIRE_SIGNAL_YAW * turn * turn * (3 - 2 * turn);
+    }
     this.umpire.update(dt);
+    if (this.live.boundaryRuns !== null) {
+      umpireSignalPose(this.umpirePose, this.umpire.pose, this.live.boundaryRuns, this.live.celebrationTime - UMPIRE_SIGNAL_START);
+      applyPose(this.umpire.rig, this.umpirePose);
+    }
     this.fielders.forEach((f, i) => {
       if (live) f.lookAt(watch);
       f.update(dt);
       this.live.fielders[i].x = f.world.x;
       this.live.fielders[i].z = f.world.z;
     });
+    this.live.momentShot = momentShot(this.live.moment, this.live.celebrationTime);
+    this.reactions.update(this.live.moment, this.live.momentShot, this.live.celebrationTime);
+    // Cutaway doubles replace the live actors only visually; scoring and physics
+    // continue unchanged, and every actor is restored on reset/menu/retry.
+    const visible = this.live.momentShot === null;
+    for (const b of this.batsmen) b.rig.root.visible = visible;
+    for (const f of this.fielders) f.rig.root.visible = visible;
+    this.bowler.rig.root.visible = visible;
+    this.umpire.rig.root.visible = visible;
+    this.ballMesh.visible = visible;
   }
 
   /** A held ball travels in the holder's hand. */
@@ -1236,12 +1378,12 @@ export class Game {
 
   /** World point -> the striker's root space. */
   private toStrikerRoot(p: THREE.Vector3): THREE.Vector3 {
-    // Root at STRIKER_ROOT, yawed +90 degrees, scaled by RIG_SCALE:
+    // Root at the player's moved stance, yawed +90 degrees, scaled by RIG_SCALE:
     // world +Z is root -X, world +X is root +Z.
     return p.set(
-      -(p.z - STRIKER_ROOT.z) / RIG_SCALE,
+      -(p.z - this.strikerRoot.z) / RIG_SCALE,
       p.y / RIG_SCALE,
-      (p.x - STRIKER_ROOT.x) / RIG_SCALE
+      (p.x - this.strikerRoot.x) / RIG_SCALE
     );
   }
 
@@ -1279,9 +1421,21 @@ export class Game {
     const target = new THREE.Vector3();
     const look = new THREE.Vector3();
     let fov = CAMERA_FOV;
+    const reactionShot = this.live.momentShot;
+    const umpireShot = !reactionShot && this.live.boundaryRuns !== null && this.live.celebrationTime >= BOUNDARY_CUT_TIME && !this.resetDone;
 
     const following = this.struck && (this.phase === "resolved" || this.phase === "settling") && !this.resetDone;
-    if (following) {
+    if (reactionShot) {
+      target.copy(this.reactions.camera);
+      look.copy(this.reactions.look);
+      fov = 38;
+    } else if (umpireShot) {
+      // Front three-quarter view keeps the hands and hat clear of the stumps;
+      // leave room on screen-left for the boundary graphic.
+      target.copy(UMPIRE_SIGNAL_CAMERA);
+      look.set(UMPIRE_AT.x + 0.35, 1.35, UMPIRE_AT.z - 0.35);
+      fov = 38;
+    } else if (following) {
       const b = this.world.ball;
       const ball = new THREE.Vector3(b.position.x, b.position.y, b.position.z);
       const bat = new THREE.Vector3(0, 1, STRIKER_STUMPS_Z);
@@ -1306,12 +1460,20 @@ export class Game {
     }
 
     // During the cut to black the camera jumps home, unseen.
-    const snap = this.live.fade >= 1;
+    const snap = this.live.fade >= 1 || (umpireShot && !this.boundaryCameraActive) || reactionShot !== this.reactionCameraShot;
+    this.reactionCameraShot = reactionShot;
+    this.boundaryCameraActive = umpireShot;
     const kPos = snap ? 1 : 1 - Math.exp(-2.6 * dt);
     const kLook = snap ? 1 : 1 - Math.exp(-4.5 * dt);
     this.camera.position.lerp(target, kPos);
     this.cameraLook.lerp(look, kLook);
     this.camera.lookAt(this.cameraLook);
+    // Derive radar orientation from the rendered view, including camera cuts.
+    const dx = this.cameraLook.x - this.camera.position.x;
+    const dz = this.cameraLook.z - this.camera.position.z;
+    const groundLength = Math.hypot(dx, dz) || 1;
+    this.live.radarForwardX = dx / groundLength;
+    this.live.radarForwardZ = dz / groundLength;
 
     if (Math.abs(this.camera.fov - fov) > 0.05) {
       this.camera.fov += (fov - this.camera.fov) * kPos;
@@ -1341,6 +1503,7 @@ export class Game {
     if (this.telemetryTimer < 1 / TELEMETRY_HZ) return;
     this.telemetryTimer = 0;
     this.onTelemetry?.({
+      challenge: { ...challengeStatus(CHALLENGES[this.level], this.match), level: this.level, screen: this.screen, progress: this.progress },
       match: this.match,
       phase: this.phase,
       lastEvent: this.lastEvent,
@@ -1361,6 +1524,59 @@ export class Game {
     }
   }
 
+  /** Start a fresh attempt only for unlocked levels, without recreating the scene. */
+  selectLevel(level: number): void {
+    if (!Number.isInteger(level) || level < 0 || level > this.progress.unlocked || !CHALLENGES[level]) return;
+    this.level = level;
+    this.screen = "ready";
+    this.phase = "idle";
+    this.phaseTime = 0;
+    this.live.fade = 0;
+    this.live.lastBand = null;
+    this.live.shotFeedback = "";
+    this.match = newInnings(["Sharma", "Patel", "Khan", "Mitchell", "Okafor", "Silva", "Brennan"]);
+    this.style = CHALLENGES[level].styles[0];
+    this.lastEvent = "Press R to bowl";
+    this.resetPositions();
+    this.input.consume();
+    this.input.consumeRestart();
+    this.emitTelemetry(999);
+  }
+
+  /** Menus are opened between balls so a live delivery cannot continue behind them. */
+  showLevelSelect(): void {
+    if (this.phase !== "idle") return;
+    this.screen = "select";
+    this.emitTelemetry(999);
+  }
+
+  /** Resolve manual/automatic footwork and publish the choice to the timing HUD. */
+  private selectedFootwork(requested: Footwork): Footwork {
+    const footwork = effectiveFootwork(requested, lengthForStance(this.bounceZ, this.strikerRoot.z - STRIKER_ROOT.z));
+    this.live.footwork = footwork;
+    return footwork;
+  }
+
+  /** Predict contact at the frozen stance's footwork-specific hitting plane. */
+  private contactPrediction(footwork: Footwork): ContactPrediction | null {
+    return predictContact(this.ballSnapshot(), this.world, this.strikerRoot.z - CONTACT_X[footwork] * RIG_SCALE);
+  }
+
+  /** Decorative drift converges before the delivery stride; the locked point never follows the ball. */
+  private updateMarker(dt: number): void {
+    if (this.bowler.state === "delivery" || this.phase === "flight") this.markerLocked = true;
+    if (this.world.hasPitched || this.phase === "resolved") this.markerFade = Math.max(0, this.markerFade - dt * 5);
+    this.marker.visible = !!this.markerPoint && this.markerFade > 0 && (this.phase === "runup" || this.phase === "flight");
+    if (!this.marker.visible || !this.markerPoint) return;
+    this.marker.position.copy(this.markerPoint);
+    const drift = this.markerLocked ? 0 : Math.max(0, 1 - this.bowler.runupProgress);
+    this.marker.position.x += Math.sin(this.phaseTime * 5) * 0.22 * drift;
+    this.marker.position.z += Math.cos(this.phaseTime * 4) * 0.32 * drift;
+    this.marker.scale.setScalar(this.markerLocked ? 1 : 1 + 0.12 * Math.sin(this.phaseTime * 7));
+    this.marker.material.opacity = this.markerFade * 0.9;
+    this.marker.material.color.setHex(this.markerLocked ? 0xb8ff85 : 0x7de8ff);
+  }
+
   private onResize = () => {
     const w = this.canvas.clientWidth || window.innerWidth;
     const h = this.canvas.clientHeight || window.innerHeight;
@@ -1376,6 +1592,13 @@ export class Game {
     cancelAnimationFrame(this.raf);
     window.removeEventListener("resize", this.onResize);
     this.input.dispose();
+    this.marker?.material.dispose();
+    this.previewRig?.root.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      m.geometry.dispose();
+      for (const material of Array.isArray(m.material) ? m.material : [m.material]) material.dispose();
+    });
     this.scene.traverse((o) => {
       const m = o as THREE.Mesh;
       if (!m.isMesh) return;

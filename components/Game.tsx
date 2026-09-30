@@ -8,6 +8,10 @@ import { FadeOverlay } from "./hud/FadeOverlay";
 import { FieldRadar } from "./hud/FieldRadar";
 import { ScorePlate } from "./hud/ScorePlate";
 import { ShotMeter } from "./hud/ShotMeter";
+import { ChallengePanel } from "./hud/ChallengePanel";
+import { BoundaryCelebration } from "./hud/BoundaryCelebration";
+import { WicketPresentation } from "./hud/WicketPresentation";
+import { GameplayHud } from "./hud/GameplayHud";
 
 /**
  * Canvas host and HUD tree.
@@ -80,13 +84,18 @@ export default function GameCanvas() {
 
       {!loading && !error && telemetry && (
         <>
-          <DeliveryPanel live={live} telemetry={telemetry} />
-          <FieldRadar live={live} />
-          <ShotMeter live={live} />
-          <ScorePlate match={telemetry.match} team="IND" />
+          <BoundaryCelebration live={live} />
+          <WicketPresentation live={live} />
+          <GameplayHud live={live}>
+            <DeliveryPanel live={live} telemetry={telemetry} />
+            <FieldRadar live={live} />
+            <ShotMeter live={live} />
+            <ScorePlate match={telemetry.match} team="IND" />
+            <ChallengePanel telemetry={telemetry} select={(level) => gameRef.current?.selectLevel(level)} bowl={() => gameRef.current?.bowl()} menu={() => gameRef.current?.showLevelSelect()} />
+          </GameplayHud>
 
           {/* Event banner — only while there is something to say. */}
-          {telemetry.lastEvent && telemetry.phase === "idle" && (
+          {telemetry.lastEvent && telemetry.phase === "idle" && telemetry.lastEvent !== "FOUR" && telemetry.lastEvent !== "SIX" && (
             <div className="pointer-events-none absolute left-1/2 top-[22%] -translate-x-1/2">
               <div className="hud-plate hud-angled px-8 py-2.5 text-2xl tracking-wide">
                 {telemetry.lastEvent}

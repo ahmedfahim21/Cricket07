@@ -124,6 +124,8 @@ export class CricketWorld {
 
   /** True once the ball has pitched at least once since release. */
   hasPitched = false;
+  /** Counts every ground impact, including ones between rendered frames. */
+  bounceCount = 0;
   /** Set on the step the ball pitches; consumers clear it. */
   lastBounce: BounceEvent | null = null;
   /** True while a delivery is live (released and not yet dead). */
@@ -219,6 +221,7 @@ export class CricketWorld {
     this.ballBody.setAngvel(d.spin, true);
     this.ball.seamAngle = d.seamAngle;
     this.hasPitched = false;
+    this.bounceCount = 0;
     this.lastBounce = null;
     this.live = true;
     this.accumulator = 0;
@@ -311,6 +314,7 @@ export class CricketWorld {
     const p = this.ballBody.translation();
     const v = this.ballBody.linvel();
     if (p.y > BALL_RADIUS || v.y >= 0) return;
+    this.bounceCount++;
 
     const w = this.ballBody.angvel();
     // The strip only extends over the square; everywhere else is outfield.

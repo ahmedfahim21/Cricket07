@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import type { LiveState } from "@/lib/game/engine";
+import { TIMING_BANDS } from "@/lib/game/match/shot";
 
 const W = 190;
 const H = 118;
@@ -41,15 +42,20 @@ export function ShotMeter({ live }: { live: LiveState | null }) {
       raf = requestAnimationFrame(draw);
       ctx.clearRect(0, 0, W, H);
 
-      const approach = live?.phase === "flight" ? live.approach : 0;
-      const lit = Math.round(approach * SEGMENTS);
+      // Error zero is the ideal press, independent of pace, bounce and stance.
+      const error = live?.phase === "flight" ? live.timingError : null;
+      const extent = 0.3;
+      const progress = error === null ? 0 : Math.max(0, Math.min(1, (error + extent) / (extent * 2)));
+      const lit = Math.round(progress * SEGMENTS);
+      const goodWindow = TIMING_BANDS.find((b) => b.band === "good")!.within;
 
       for (let i = 0; i < SEGMENTS; i++) {
         const a0 = START + ((END - START) * i) / SEGMENTS;
         const a1 = START + ((END - START) * (i + 1)) / SEGMENTS - 0.012;
 
         // The timing window is the last few segments; past it you are late.
-        const isWindow = i >= SEGMENTS - 4 && i < SEGMENTS - 1;
+        const segmentError = ((i + 0.5) / SEGMENTS) * extent * 2 - extent;
+        const isWindow = Math.abs(segmentError) <= goodWindow;
 
         ctx.beginPath();
         ctx.arc(cx, cy, rOuter, a0, a1);
@@ -70,7 +76,7 @@ export function ShotMeter({ live }: { live: LiveState | null }) {
       }
 
       // Band label.
-      if (live?.lastBand && live.phase !== "flight") {
+      if (live?.lastBand) {
         ctx.fillStyle =
           live.lastBand === "perfect"
             ? "#7dd66a"
@@ -81,7 +87,14 @@ export function ShotMeter({ live }: { live: LiveState | null }) {
                 : "#e8c44a";
         ctx.font = "15px ui-sans-serif, system-ui, sans-serif";
         ctx.textAlign = "center";
-        ctx.fillText(live.lastBand.toUpperCase(), cx, cy - 26);
+        ctx.fillText(live.shotFeedback.toUpperCase(), cx, cy - 26);
+      } else {
+        ctx.fillStyle = "#d5e4d2";
+        ctx.font = "12px ui-sans-serif, system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(error !== null && Math.abs(error) <= goodWindow ? "HIT NOW" : "TIME YOUR SHOT", cx, cy - 26);
+        ctx.font = "10px ui-sans-serif, system-ui, sans-serif";
+        ctx.fillText(`${live?.footwork === "back" ? "BACK" : "FRONT"} FOOT`, cx, cy - 10);
       }
     };
     draw();

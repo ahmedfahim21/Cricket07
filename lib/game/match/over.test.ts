@@ -312,11 +312,11 @@ describe("a full over", () => {
     expect(outcome!.band).toBe("missed");
   });
 
-  it("hits it further the better it is timed", () => {
+  it("turns good timing into boundaries while an edge stays short", () => {
     const world = new CricketWorld();
     const rand = mulberry32(7);
-    const distances: number[] = [];
-    for (const timingError of [0, 0.05, 0.1]) {
+    const boundaries: boolean[] = [];
+    for (const timingError of [0, 0.10, 0.22]) {
       const { report, outcome } = playDelivery(
         world,
         "fast-medium",
@@ -325,10 +325,10 @@ describe("a full over", () => {
         3
       );
       expect(outcome!.missed).toBe(false);
-      distances.push(Math.hypot(report.endX, report.endZ - STRIKER_STUMPS_Z));
+      boundaries.push(report.beyondBoundary);
     }
-    expect(distances[0]).toBeGreaterThan(distances[1]);
-    expect(distances[1]).toBeGreaterThan(distances[2]);
+    // Distance is capped at an elliptical rope, so it cannot rank two fours.
+    expect(boundaries).toEqual([true, true, false]);
   });
 
   it("can be bowled by leaving a straight ball alone", () => {

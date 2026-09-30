@@ -324,9 +324,14 @@ export class BowlerAnimator {
     this.phase = 0;
   }
 
-  /** Seconds from the start of the run-up to the release. */
+  /** Seconds from the start of the delivery stride to the release. */
   get releaseTime(): number {
     return this.releaseAt;
+  }
+
+  /** Normalized approach distance for cues that settle before the delivery stride. */
+  get runupProgress(): number {
+    return this.state === "mark" ? 0 : this.state === "runup" ? this.s / this.approach.runLength : 1;
   }
 
   update(dt: number): void {

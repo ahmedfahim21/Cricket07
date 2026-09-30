@@ -25,15 +25,15 @@ export type TimingBand = "missed" | "edged" | "mistimed" | "good" | "perfect";
 
 /** Absolute timing error, in seconds, at or below which each band applies. */
 export const TIMING_BANDS: { band: TimingBand; within: number }[] = [
-  { band: "perfect", within: 0.022 },
-  { band: "good", within: 0.055 },
-  { band: "mistimed", within: 0.095 },
-  { band: "edged", within: 0.145 },
+  { band: "perfect", within: 0.060 },
+  { band: "good", within: 0.120 },
+  { band: "mistimed", within: 0.180 },
+  { band: "edged", within: 0.230 },
 ];
 
 export interface DeliveryContext {
   length: Length;
-  /** Ball's X at the moment it reaches the striker; 0 is middle stump. */
+  /** Ball's lateral line relative to the guard position; zero is the bat's normal line. */
   lineAtCrease: number;
   /** Ball's height at the moment it reaches the striker, metres. */
   heightAtCrease: number;
@@ -86,11 +86,16 @@ const IDEAL_FOOTWORK: Record<Length, Footwork> = {
   short: "back",
 };
 
-/** How much of the bat's speed each shot type puts through the ball. */
+/** Neutral input means assistance; an explicit arrow always wins. */
+export function effectiveFootwork(footwork: Footwork, length: Length): Footwork {
+  return footwork === "none" ? IDEAL_FOOTWORK[length] : footwork;
+}
+
+/** Arcade stroke authority: attacking shots can clear the rope even against spin. */
 const TYPE_POWER: Record<ShotType, number> = {
   defensive: 0.22,
-  ground: 0.82,
-  lofted: 0.95,
+  ground: 1.20,
+  lofted: 1.65,
 };
 
 /**
@@ -125,8 +130,8 @@ const TYPE_ELEVATION: Record<ShotType, number> = {
 /**
  * Peak bat speed at the point of contact, m/s.
  *
- * A middled shot has to leave the bat around 38-42 m/s for a straight six to
- * carry the 80m from the striker's end, which is what this is set against.
+ * Stroke authority above adds the arcade power boost; defence still uses
+ * soft hands. Keep this base speed for physical contact-offset calculations.
  */
 const BAT_SPEED = 25;
 
@@ -203,7 +208,9 @@ export function resolveShot(ctx: DeliveryContext, attempt: ShotAttempt): ShotOut
 
   // Middling factor: 1 at perfect contact, falling away with both the timing
   // error and the footwork mismatch.
-  const middling = clamp(1 - absError / 0.16, 0, 1) * (0.55 + 0.45 * fit);
+  // Good timing retains boundary power; outside that window contact falls off sharply.
+  const timingQuality = absError <= 0.12 ? 1 - absError * 0.9 : 0.892 - (absError - 0.12) * 6;
+  const middling = clamp(timingQuality, 0, 1) * (0.55 + 0.45 * fit);
 
   // Exit speed. The ball's own pace contributes — that is why a genuinely
   // quick bowler goes to the boundary faster off the same shot.
@@ -225,7 +232,8 @@ export function resolveShot(ctx: DeliveryContext, attempt: ShotAttempt): ShotOut
   // turns a mistimed drive into a catch to mid-off.
   const lift = (1 - middling) * 0.55;
   const heightBonus = clamp((ctx.heightAtCrease - 0.7) * 0.25, -0.1, 0.25);
-  const exitElevation = TYPE_ELEVATION[attempt.type] + lift + heightBonus;
+  const exitElevation = attempt.type === "ground" && (band === "perfect" || band === "good")
+    ? 0.025 : TYPE_ELEVATION[attempt.type] + lift + heightBonus;
 
   // Catching chance. An edge is the most likely of all to carry; a lofted
   // shot that was not middled is next.

@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { BOUNDARY_SQUARE, BOUNDARY_STRAIGHT, INNER_CIRCLE_RADIUS } from "@/lib/game/dimensions";
 import type { LiveState } from "@/lib/game/engine";
+import { radarPoint } from "@/lib/game/presentation/radar";
 
 const W = 148;
 const H = 132;
@@ -31,18 +32,28 @@ export function FieldRadar({ live }: { live: LiveState | null }) {
     ctx.scale(dpr, dpr);
 
     let raf = 0;
-    // World (x, z) -> radar pixels. The pitch runs vertically, as it does in
-    // the original, so Z maps to Y.
-    const px = (x: number) => W / 2 + (x / BOUNDARY_SQUARE) * (W / 2 - 8);
-    const py = (z: number) => H / 2 - (z / BOUNDARY_STRAIGHT) * (H / 2 - 8);
+    // Rotate everything together, using the actual camera rather than the
+    // selected mode: the chase camera can be on the opposite side of the pitch.
+    const project = (x: number, z: number) => {
+      const p = radarPoint(x, z, live?.radarForwardX ?? 0, live?.radarForwardZ ?? 1);
+      return { x: W / 2 + p.x * (W / 2 - 8), y: H / 2 + p.y * (H / 2 - 8) };
+    };
+    const ellipse = (rx: number, rz: number) => {
+      ctx.beginPath();
+      for (let i = 0; i <= 64; i++) {
+        const a = i / 64 * Math.PI * 2;
+        const p = project(Math.cos(a) * rx, Math.sin(a) * rz);
+        if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+      }
+      ctx.closePath();
+    };
 
     const draw = () => {
       raf = requestAnimationFrame(draw);
       ctx.clearRect(0, 0, W, H);
 
       // The ground.
-      ctx.beginPath();
-      ctx.ellipse(W / 2, H / 2, W / 2 - 8, H / 2 - 8, 0, 0, Math.PI * 2);
+      ellipse(BOUNDARY_SQUARE, BOUNDARY_STRAIGHT);
       ctx.fillStyle = "#1c3a1e";
       ctx.fill();
       ctx.strokeStyle = "#4d7a4a";
@@ -50,37 +61,36 @@ export function FieldRadar({ live }: { live: LiveState | null }) {
       ctx.stroke();
 
       // 30-yard circle.
-      ctx.beginPath();
-      ctx.ellipse(
-        W / 2,
-        H / 2,
-        (INNER_CIRCLE_RADIUS / BOUNDARY_SQUARE) * (W / 2 - 8),
-        (INNER_CIRCLE_RADIUS / BOUNDARY_STRAIGHT) * (H / 2 - 8),
-        0,
-        0,
-        Math.PI * 2
-      );
+      ellipse(INNER_CIRCLE_RADIUS, INNER_CIRCLE_RADIUS);
       ctx.strokeStyle = "rgba(160,200,150,0.35)";
       ctx.stroke();
 
       // The pitch.
       ctx.fillStyle = "#b9a274";
-      ctx.fillRect(W / 2 - 2.5, py(10.06), 5, py(-10.06) - py(10.06));
+      ctx.beginPath();
+      for (const [i, [x, z]] of [[-1.5, 10.06], [1.5, 10.06], [1.5, -10.06], [-1.5, -10.06]].entries()) {
+        const p = project(x, z);
+        if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+      }
+      ctx.closePath();
+      ctx.fill();
 
       if (!live) return;
 
       // Fielders.
       ctx.fillStyle = "#e8d44a";
       for (const f of live.fielders) {
+        const p = project(f.x, f.z);
         ctx.beginPath();
-        ctx.arc(px(f.x), py(f.z), 2.6, 0, Math.PI * 2);
+        ctx.arc(p.x, p.y, 2.6, 0, Math.PI * 2);
         ctx.fill();
       }
 
       // The ball, while it is in play.
       if (live.phase !== "idle") {
+        const p = project(live.ballX, live.ballZ);
         ctx.beginPath();
-        ctx.arc(px(live.ballX), py(live.ballZ), 2.4, 0, Math.PI * 2);
+        ctx.arc(p.x, p.y, 2.4, 0, Math.PI * 2);
         ctx.fillStyle = "#ff5a4a";
         ctx.fill();
       }

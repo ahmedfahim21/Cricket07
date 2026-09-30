@@ -43,7 +43,8 @@ export class BattingController {
     const t = e.target as HTMLElement | null;
     if (!t) return false;
     const tag = t.tagName;
-    return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || t.isContentEditable;
+    const activatesControl = (tag === "BUTTON" || tag === "A") && (e.code === "Space" || e.code === "Enter");
+    return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || activatesControl || t.isContentEditable;
   }
 
   private onKeyDown = (e: KeyboardEvent) => {
@@ -75,6 +76,9 @@ export class BattingController {
   /** Alt-tabbing away with keys down otherwise leaves them held. */
   private onBlur = () => {
     this.held.clear();
+    this.pendingShot = null;
+    this.restartPressed = false;
+    this.cameraPressed = false;
   };
 
   private isBound(code: string): boolean {
@@ -101,7 +105,11 @@ export class BattingController {
     if (this.anyHeld(b.aimOff)) aim -= 1;
     if (this.anyHeld(b.aimLeg)) aim += 1;
 
-    return { footwork, aim, shot: this.pendingShot, square: this.anyHeld(b.square) };
+    return {
+      footwork, aim, shot: this.pendingShot, square: this.anyHeld(b.square),
+      moveX: Number(this.anyHeld(b.moveRight)) - Number(this.anyHeld(b.moveLeft)),
+      moveForward: Number(this.anyHeld(b.moveForward)) - Number(this.anyHeld(b.moveBack)),
+    };
   }
 
   /**

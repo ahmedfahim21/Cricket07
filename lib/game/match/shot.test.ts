@@ -3,6 +3,7 @@ import {
   classifyTiming,
   idealPressLead,
   resolveShot,
+  effectiveFootwork,
   type DeliveryContext,
   type ShotAttempt,
 } from "./shot";
@@ -34,10 +35,11 @@ describe("classifyTiming", () => {
     expect(classifyTiming(0)).toBe("perfect");
     expect(classifyTiming(0.02)).toBe("perfect");
     expect(classifyTiming(-0.02)).toBe("perfect");
-    expect(classifyTiming(0.04)).toBe("good");
-    expect(classifyTiming(-0.04)).toBe("good");
-    expect(classifyTiming(0.08)).toBe("mistimed");
-    expect(classifyTiming(0.13)).toBe("edged");
+    expect(classifyTiming(0.06)).toBe("perfect");
+    expect(classifyTiming(0.12)).toBe("good");
+    expect(classifyTiming(-0.12)).toBe("good");
+    expect(classifyTiming(0.18)).toBe("mistimed");
+    expect(classifyTiming(0.23)).toBe("edged");
     expect(classifyTiming(0.3)).toBe("missed");
     expect(classifyTiming(-0.3)).toBe("missed");
   });
@@ -62,7 +64,7 @@ describe("resolveShot — a missed shot", () => {
 describe("resolveShot — timing", () => {
   it("hits a perfectly timed shot harder than a well timed one, all else equal", () => {
     const perfect = resolveShot(delivery(), attempt({ timingError: 0 }));
-    const good = resolveShot(delivery(), attempt({ timingError: 0.045 }));
+    const good = resolveShot(delivery(), attempt({ timingError: 0.10 }));
     expect(perfect.exitSpeed).toBeGreaterThan(good.exitSpeed);
   });
 
@@ -77,7 +79,7 @@ describe("resolveShot — timing", () => {
 
   it("raises the catching chance as timing worsens", () => {
     const perfect = resolveShot(delivery(), attempt({ timingError: 0 }));
-    const edged = resolveShot(delivery(), attempt({ timingError: 0.13 }));
+    const edged = resolveShot(delivery(), attempt({ timingError: 0.20 }));
     expect(edged.chanceOfCatch).toBeGreaterThan(perfect.chanceOfCatch);
     expect(edged.band).toBe("edged");
   });
@@ -92,7 +94,7 @@ describe("resolveShot — timing", () => {
 
   it("lifts a mistimed ball into the air even on a ground shot", () => {
     const clean = resolveShot(delivery(), attempt({ type: "ground", timingError: 0 }));
-    const scuffed = resolveShot(delivery(), attempt({ type: "ground", timingError: 0.09 }));
+    const scuffed = resolveShot(delivery(), attempt({ type: "ground", timingError: 0.16 }));
     expect(scuffed.exitElevation).toBeGreaterThan(clean.exitElevation);
   });
 
@@ -131,6 +133,12 @@ describe("resolveShot — shot type", () => {
 });
 
 describe("resolveShot — footwork", () => {
+  it("assists neutral input while preserving manual overrides", () => {
+    expect(effectiveFootwork("none", "full")).toBe("front");
+    expect(effectiveFootwork("none", "short")).toBe("back");
+    expect(effectiveFootwork("front", "short")).toBe("front");
+    expect(effectiveFootwork("back", "full")).toBe("back");
+  });
   it("rewards going forward to a full ball and back to a short one", () => {
     const forwardToFull = resolveShot(
       delivery({ length: "full" }),
@@ -226,13 +234,13 @@ describe("resolveShot — ball pace", () => {
 
 describe("resolveShot — playing on", () => {
   it("can play on from a late edge to a straight ball", () => {
-    const o = resolveShot(delivery({ lineAtCrease: 0.1 }), attempt({ timingError: 0.13 }));
+    const o = resolveShot(delivery({ lineAtCrease: 0.1 }), attempt({ timingError: 0.20 }));
     expect(o.band).toBe("edged");
     expect(o.playedOn).toBe(true);
   });
 
   it("does not play on from an edge to a wide ball", () => {
-    const o = resolveShot(delivery({ lineAtCrease: 0.8 }), attempt({ timingError: 0.13 }));
+    const o = resolveShot(delivery({ lineAtCrease: 0.8 }), attempt({ timingError: 0.20 }));
     expect(o.playedOn).toBe(false);
   });
 

@@ -22,6 +22,10 @@ export type ShotType = "defensive" | "ground" | "lofted";
 export type Footwork = "front" | "back" | "none";
 
 export interface Bindings {
+  moveLeft: string[];
+  moveRight: string[];
+  moveForward: string[];
+  moveBack: string[];
   frontFoot: string[];
   backFoot: string[];
   aimOff: string[];
@@ -43,10 +47,14 @@ export interface Bindings {
  * the direction hold and the two never fight for the same key.
  */
 export const DEFAULT_BINDINGS: Bindings = {
-  frontFoot: ["ArrowUp", "KeyW"],
-  backFoot: ["ArrowDown", "KeyS"],
-  aimOff: ["ArrowLeft", "KeyA"],
-  aimLeg: ["ArrowRight", "KeyD"],
+  moveLeft: ["KeyA"],
+  moveRight: ["KeyD"],
+  moveForward: ["KeyW"],
+  moveBack: ["KeyS"],
+  frontFoot: ["ArrowUp"],
+  backFoot: ["ArrowDown"],
+  aimOff: ["ArrowLeft"],
+  aimLeg: ["ArrowRight"],
   defensive: ["KeyZ"],
   ground: ["KeyX", "Space"],
   lofted: ["KeyC"],
@@ -57,6 +65,8 @@ export const DEFAULT_BINDINGS: Bindings = {
 
 /** What the batting logic consumes. A gamepad will produce this too. */
 export interface BattingIntent {
+  moveX: number;
+  moveForward: number;
   footwork: Footwork;
   /**
    * Aim across the ground, -1 (fully off side) to +1 (fully leg side), for a
@@ -69,6 +79,8 @@ export interface BattingIntent {
 }
 
 export const NEUTRAL_INTENT: BattingIntent = {
+  moveX: 0,
+  moveForward: 0,
   footwork: "none",
   aim: 0,
   shot: null,
@@ -77,8 +89,9 @@ export const NEUTRAL_INTENT: BattingIntent = {
 
 /** Human-readable control list, for the on-screen help panel. */
 export const CONTROL_HELP: { keys: string; action: string }[] = [
-  { keys: "↑ / ↓", action: "Front foot / back foot" },
-  { keys: "← / →", action: "Aim off side / leg side" },
+  { keys: "W A S D", action: "Move during run-up" },
+  { keys: "↑ / ↓", action: "Override automatic footwork" },
+  { keys: "← / →", action: "Aim left / right" },
   { keys: "Z", action: "Defend" },
   { keys: "X or Space", action: "Ground shot" },
   { keys: "C", action: "Loft" },

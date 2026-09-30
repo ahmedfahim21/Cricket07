@@ -22,8 +22,9 @@ import {
   STRIKER_STUMPS_Z,
 } from "../dimensions";
 import { DEFAULT_AERO, aeroForce, type AeroParams } from "../physics/aero";
-import { PHYSICS_DT } from "../physics/world";
+import { CricketWorld, PHYSICS_DT } from "../physics/world";
 import type { DeliveryRelease } from "../physics/world";
+import type { PitchConditions } from "../physics/pitch";
 import { Vec3, v3 } from "../physics/vec3";
 
 export type BowlerStyle = "fast" | "fast-medium" | "medium" | "off-spin" | "leg-spin";
@@ -84,6 +85,26 @@ export function planFor(style: BowlerStyle, over: Partial<DeliveryPlan> = {}): D
     ...STYLE_DEFAULTS[style],
     ...over,
   };
+}
+
+/**
+ * Predict the marker with an isolated physics world. Rapier's gravity integration
+ * can shift a fast ball's first impact by one 240 Hz step versus the analytic
+ * predictor; use the live integrator here so the locked ring never needs to jump.
+ */
+export function previewBounce(release: DeliveryRelease, pitch: PitchConditions, outfield: PitchConditions): Vec3 | null {
+  const preview = new CricketWorld();
+  preview.pitch = { ...pitch };
+  preview.outfield = { ...outfield };
+  try {
+    preview.release(release);
+    for (let step = 0; step < 720; step++) {
+      preview.step(PHYSICS_DT);
+      if (preview.ball.position.z < STRIKER_STUMPS_Z) return null;
+      if (preview.lastBounce) return { ...preview.lastBounce.position };
+    }
+    return null;
+  } finally { preview.dispose(); }
 }
 
 /**
