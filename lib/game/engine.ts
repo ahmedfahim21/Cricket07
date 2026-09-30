@@ -497,6 +497,7 @@ export class Game {
     this.phase = "runup";
     this.phaseTime = 0;
     this.lastEvent = "";
+    this.live.lastBand = null;
 
     const base = planFor(this.style, { targetLength: 5, targetLine: -0.15 });
     const plan = varyDelivery(base, this.rand);
@@ -668,7 +669,7 @@ export class Game {
           predictPath(this.ballSnapshot(), { pitch: this.world.pitch, outfield: this.world.outfield, maxTime: 1 }),
           Math.max(0, (ball.position.z - (keeper.world.z + 0.45)) / Math.max(1, -ball.velocity.z))
         );
-        keeper.catchAt(new THREE.Vector3(take.x, Math.max(0.3, take.y), take.z));
+        keeper.catchAt(new THREE.Vector3(take.x, take.y, take.z));
       }
       if (!this.holder && this.keeperTaking) {
         const gloves = keeper.glovesWorld(new THREE.Vector3());

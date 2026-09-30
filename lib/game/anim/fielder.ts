@@ -370,15 +370,30 @@ export class FielderAnimator {
   }
 
   private updateCatch(): void {
-    // Hands up toward the ball, feet set.
-    idlePose(this.pose, this.time, this.seed);
     const l = this.toRoot(this.catchPoint);
-    const high = Math.max(0.5, Math.min(2.3, l.y));
+    const z = Math.min(-0.25, l.z);
+    if (this.keeper && l.y < 0.9) {
+      // A keeper takes anything below the waist from his crouch, gloves
+      // together and fingers down, however low it comes.
+      keeperCrouch(this.pose, this.time);
+      const y = Math.max(0.1, l.y);
+      setPose(this.pose, {
+        handLX: l.x - 0.06, handLY: y, handLZ: z, handLW: 1,
+        handRX: l.x + 0.06, handRY: y, handRZ: z, handRW: 1,
+        torsoPitch: 0.45 + 0.35 * (1 - y / 0.9),
+      });
+      return;
+    }
+    // Hands to the ball, feet set; bending at the knees and hips to get down
+    // to a low one rather than reaching for it with straight legs.
+    idlePose(this.pose, this.time, this.seed);
+    const high = Math.max(0.15, Math.min(2.3, l.y));
+    const low = THREE.MathUtils.clamp((0.9 - high) / 0.75, 0, 1);
     setPose(this.pose, {
-      handLX: l.x - 0.07, handLY: high, handLZ: Math.min(-0.25, l.z), handLW: 1,
-      handRX: l.x + 0.07, handRY: high, handRZ: Math.min(-0.25, l.z), handRW: 1,
-      pelvisY: high < 0.8 ? -0.2 : -0.03,
-      torsoPitch: high < 0.8 ? 0.35 : 0.05,
+      handLX: l.x - 0.07, handLY: high, handLZ: z, handLW: 1,
+      handRX: l.x + 0.07, handRY: high, handRZ: z, handRW: 1,
+      pelvisY: high < 0.9 ? -0.08 - 0.3 * low : -0.03,
+      torsoPitch: high < 0.9 ? 0.3 + 0.45 * low : 0.05,
     });
   }
 

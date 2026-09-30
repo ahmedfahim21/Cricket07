@@ -99,6 +99,17 @@ describe("FielderAnimator", () => {
     expect(Math.abs(Math.atan2(Math.sin(f.yaw - Math.PI), Math.cos(f.yaw - Math.PI)))).toBeLessThan(0.06);
   });
 
+  it("gets his gloves down to a ball arriving at boot height", () => {
+    // Regression: the catch pose floored the hands at 0.5 m, so a pace ball
+    // reaching a standing-back keeper on its way down went under his gloves.
+    const k = new FielderAnimator(makePlayer({ role: "keeper", colours: FIELDING_KIT }), true);
+    k.place(new THREE.Vector3(0, 0, -19), Math.PI);
+    const take = new THREE.Vector3(0.2, 0.1, -18.6);
+    k.catchAt(take);
+    run((dt) => k.update(dt), 0.2);
+    expect(k.glovesWorld(new THREE.Vector3()).distanceTo(take)).toBeLessThan(0.15);
+  });
+
   it("sprints 25 m inside his limits and stops on the spot", () => {
     const f = new FielderAnimator(makePlayer({ role: "fielder", colours: FIELDING_KIT }));
     f.place(new THREE.Vector3(0, 0, 0), 0);
