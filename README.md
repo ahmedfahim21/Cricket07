@@ -3,11 +3,10 @@
 A browser cricket game in the spirit of EA Cricket 07: same camera grammar, same
 HUD layout, same interaction feel. Built on three.js and Rapier.
 
-**Iteration 1 delivers a playable batting loop** — a bowler runs in and delivers
-with real ball physics, you time and direct a shot, fielders cut it off, gather
-and throw it back to the keeper, the batsmen run, runs score, and the HUD
-updates. Every contact in that chain is physical: nothing teleports and nothing
-is decided off-screen.
+**Five arcade batting challenges** — chase increasing targets against pace and
+spin, move around the crease, read the animated pitch marker, and time ground
+shots or lofts. Fielders chase, gather and throw; batsmen run automatically.
+Unlocks and best successful scores are saved locally in this browser.
 
 ## Running it
 
@@ -19,14 +18,33 @@ pnpm install
 pnpm dev
 ```
 
-Then open http://localhost:3000. Press R to bowl.
+Then open http://localhost:3000, choose the first challenge, and press R to bowl.
+
+## Challenge ladder
+
+| Level | Target | Overs | Wickets |
+|---|---:|---:|---:|
+| Find the gaps | 12 | 2 | 3 |
+| Clear the rope | 20 | 2 | 3 |
+| Read the spin | 28 | 3 | 3 |
+| Handle the pace | 38 | 3 | 3 |
+| Finish the chase | 48 | 3 | 3 |
+
+Reach the target to unlock the next level. Retry or replay unlocked levels from
+the result screen. A reload starts a fresh attempt and retains unlocks; if browser
+storage is unavailable, progress lasts for the current session.
+
+Timing stays forgiving throughout: perfect within 60 ms and good within 120 ms
+of the ideal press. Difficulty comes from targets, pace, length and bowling variety.
+The final level mixes all five bowling styles between deliveries.
 
 ## Controls
 
 | Keys | Action |
 |---|---|
-| ↑ / ↓ | Front foot / back foot |
-| ← / → | Aim off side / leg side |
+| W / A / S / D | Move forward / screen-left / back / screen-right during run-up |
+| ↑ / ↓ | Override automatic front/back-foot selection |
+| ← / → | Aim screen-left / screen-right |
 | Z | Defend |
 | X or Space | Ground shot |
 | C | Loft |
@@ -36,6 +54,18 @@ Then open http://localhost:3000. Press R to bowl.
 
 Timing is judged on **when** the shot key goes down relative to the ball, not on
 which key — that is why shot type sits on its own keys rather than as a modifier.
+Press when the meter enters green. Its timing comes from the same contact
+prediction as the batting logic, including your moved position and footwork.
+Without ↑/↓, footwork is chosen automatically from the delivery's length.
+
+The cyan pitch ring pulses and drifts during the run-up, then locks green as the
+bowler enters the delivery stride. It marks the predicted first bounce, including
+aerodynamic drift, and fades after pitching. WASD movement stops at release and
+resets before the next ball.
+
+Well-timed attacking shots have enough power for fours and sixes against pace
+and spin. Placement still matters: ground shots into a fielder can be stopped,
+poor timing loses power, and balls beyond your reach can beat the bat.
 
 ## Cameras
 
@@ -60,6 +90,26 @@ because a three.js camera looks down its own -Z: behind the batsman, screen
 right maps to world -X, so the leg side is on the left; behind the bowler it is
 on the right. Without the conversion, left sends the ball right in one camera
 and left in the other.
+
+The field radar rotates with the actual camera, including chase shots and cuts,
+so its ball and fielders move in the same directions as the main view.
+
+Fours and sixes trigger a large boundary graphic and a short confetti burst as
+soon as the ball crosses the rope. After a brief wide shot, the broadcast cuts
+to the umpire waving for four or raising both arms for six. Both finish after
+the signal (2.6 seconds), without batsman or bowler reaction cuts. Confetti and the
+graphic's bounce respect reduced-motion settings.
+
+Wickets have a 5.2-second broadcast sequence: all eleven fielders gather around
+the bowler, with staggered arrivals, high-fives, shoulder pats, applause and
+fist pumps, then a shorter 2.2-second close-up of the dismissed batsman walking off.
+Walk-offs vary between a bowed head, a straightforward exit and a hand on the
+helmet; the bottom card shows name, dismissal, runs and balls including the
+dismissal delivery. Reaction variants do not repeat consecutively and use a
+separate random source so they cannot change bowling or shot outcomes. Live
+HUD panels hide during these moments, and scoring happens once at the fade
+before the next delivery. Cinematic players are reusable visual doubles, not
+changes to the fielders' live positions or the batsmen's running state.
 
 ## The look
 
@@ -177,6 +227,21 @@ wiring is confined to `lib/game/physics/world.ts`.
 pnpm typecheck
 ```
 
+### Browser gameplay regression
+
+With a dev server running, use an isolated headless browser profile:
+
+```bash
+GAME_URL=http://localhost:3000 node scripts/game-smoke.mjs
+```
+
+The script locates Playwright Chromium, Chrome or Edge; set `CHROME_PATH` for
+another installation. It exercises the actual engine (batting animation and
+fielding included), completes the ladder, verifies fours/sixes, tests movement
+in both cameras, checks failure/retry and saved unlocks, and writes screenshots
+to the system temporary directory. It requires the development-only `__game`
+handle and does not use personal browser data.
+
 ## Looking at the assets
 
 Every model, texture and animation the game uses is generated in code. To see
@@ -243,11 +308,18 @@ so the two never fight.
 
 ## Not in iteration 1
 
-Bowling as the player, full innings and match structure, menus and team select,
+Bowling as the player, full matches, team select,
 manual running between the wickets, run-outs, LBW, byes, left-handers, DRS,
 audio, gamepad. Gamepad is deferred
 rather than designed out: `input/controller.ts` emits one intent shape and the
 keyboard is merely today's source of it.
+
+## Gameplay reference
+
+The [Cricket 07 producer diary](https://worthplaying.com/article/2006/11/2/news/37478-cricket-07-ps2pc-developer-diary-1/)
+describes crease movement, automatic/manual footwork and generous timing windows
+for accessible boundary hitting. Those behaviors guide this implementation;
+the tuning values and short challenge ladder are original, not recovered EA data.
 
 ## Assets and copyright
 
