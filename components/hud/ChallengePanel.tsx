@@ -45,12 +45,13 @@ export function ChallengePanel({ telemetry: t, select, bowl, menu, bowling }: Pr
           <p className="mt-3 text-xl">Score {level.target} in {level.overs} overs</p>
           <p className="mt-2 text-sm text-[var(--hud-muted)]">Three wickets. Automatic footwork. Generous timing.</p>
           <div className="my-5 space-y-2 text-sm text-[var(--hud-muted)]">
-            <p><span className="text-[var(--hud-green)]">WASD</span> — move during the run-up. At release, the blue ring shrinks onto the bounce point.</p>
-            <p><span className="text-[var(--hud-green)]">← →</span> — aim · <span className="text-[var(--hud-green)]">↑ ↓</span> — override footwork</p>
-            <p><span className="text-[var(--hud-green)]">X / Space</span> — ground shot · <span className="text-[var(--hud-green)]">C</span> — loft · <span className="text-[var(--hud-green)]">Z</span> — defend</p>
-            <p>Press your shot key as the timing meter enters green.</p>
+            <p><span className="text-[var(--hud-green)]">S</span> — front foot shot · <span className="text-[var(--hud-green)]">W</span> — back foot shot. The key is the stroke: press it as the timing meter enters green.</p>
+            <p><span className="text-[var(--hud-green)]">↑ + S / W</span> — defend · <span className="text-[var(--hud-green)]">Shift + S / W</span> — loft it</p>
+            <p><span className="text-[var(--hud-green)]">← →</span> — square of the wicket · add <span className="text-[var(--hud-green)]">↓</span> to play straighter</p>
+            <p><span className="text-[var(--hud-green)]">A</span> — leave it · <span className="text-[var(--hud-green)]">D</span> — come down the wicket</p>
+            <p>The arrows walk you about the crease until the ball is out of the hand, then the blue ring shrinks onto the bounce point.</p>
           </div>
-          <div className="flex gap-3"><button className={button} onClick={bowl}>Play · R</button><button className={button} onClick={menu}>Levels</button></div>
+          <div className="flex gap-3"><button className={button} onClick={bowl}>Play · Space</button><button className={button} onClick={menu}>Levels</button></div>
         </> : <>
           <h1 className="mt-3 text-3xl">{c.result === "won" ? c.level === CHALLENGES.length - 1 ? "Ladder complete!" : "Chase complete!" : "Give it another go"}</h1>
           <p className="mt-3 text-xl tabular-nums">{t.match.runs}/{t.match.wickets} · Target {level.target}</p>

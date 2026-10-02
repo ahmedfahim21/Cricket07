@@ -1,9 +1,16 @@
 /**
- * Keyboard -> batting intent or the separate bowling aim/pace/lock intent.
+ * Keyboard -> batting intent, or the separate bowling aim/pace/swing/lock intent.
  *
- * Held state (footwork, aim, square) is polled; the shot press is EDGE
+ * Held state (footwork, aim, leave, advance) is polled; the shot press is EDGE
  * triggered and consumed exactly once, because it is the timing event and a
  * held key must not re-trigger a shot every frame.
+ *
+ * The one thing worth knowing before changing this file: in Cricket 07 the
+ * front- and back-foot keys are BOTH the held stance and the shot press. S held
+ * through the run-up commits the front foot; S going down as the ball arrives is
+ * the stroke. So `frontFoot`/`backFoot` are read twice, once as held state for
+ * `footwork` and once as an edge for `shot`, and the shot's TYPE is read off
+ * whatever direction/modifier is held at that instant (see `bindings.ts`).
  *
  * A gamepad source lands here later and produces the same `BattingIntent`; no
  * consumer downstream needs to know which device it came from.
@@ -26,6 +33,7 @@ export class BattingController {
   private disposed = false;
   private restartPressed = false;
   private cameraPressed = false;
+  private ballLinePressed = false;
   private bowlingLockPressed = false;
 
   constructor(bindings: Bindings = DEFAULT_BINDINGS) {
@@ -56,14 +64,18 @@ export class BattingController {
     // Ignore auto-repeat: holding the shot key must not fire repeatedly.
     if (e.repeat) return;
     this.held.add(e.code);
-    if (e.code === "Space") this.bowlingLockPressed = true;
 
     const b = this.bindings;
-    if (b.defensive.includes(e.code)) this.queueShot("defensive");
-    else if (b.ground.includes(e.code)) this.queueShot("ground");
-    else if (b.lofted.includes(e.code)) this.queueShot("lofted");
-    else if (b.restart.includes(e.code)) this.restartPressed = true;
-    else if (b.camera.includes(e.code)) this.cameraPressed = true;
+    // The footwork keys are the shot. Which stroke it is depends on what else
+    // is down at this instant, so it has to be resolved here and not on poll.
+    if (b.frontFoot.includes(e.code) || b.backFoot.includes(e.code)) this.queueShot(this.shotType());
+    else if (b.bowl.includes(e.code)) {
+      // The same key starts a delivery when idle and locks one mid-run-up; the
+      // engine reads whichever is meaningful for the phase it is in.
+      this.restartPressed = true;
+      this.bowlingLockPressed = true;
+    } else if (b.camera.includes(e.code)) this.cameraPressed = true;
+    else if (b.ballLine.includes(e.code)) this.ballLinePressed = true;
   };
 
   /**
@@ -81,11 +93,25 @@ export class BattingController {
     this.pendingShot = null;
     this.restartPressed = false;
     this.cameraPressed = false;
+    this.ballLinePressed = false;
     this.bowlingLockPressed = false;
   };
 
   private isBound(code: string): boolean {
-    return code === "KeyQ" || code === "KeyE" || Object.values(this.bindings).some((list) => list.includes(code));
+    return Object.values(this.bindings).some((list) => list.includes(code));
+  }
+
+  /**
+   * Which stroke the press means.
+   *
+   * Defend wins over loft when both are held: up arrow is the deliberate, safe
+   * input and should never silently turn into a slog.
+   */
+  private shotType(): ShotType {
+    const b = this.bindings;
+    if (this.anyHeld(b.defend)) return "defensive";
+    if (this.anyHeld(b.loft)) return "lofted";
+    return "ground";
   }
 
   private queueShot(type: ShotType) {
@@ -100,18 +126,29 @@ export class BattingController {
   /** Held-state snapshot, without consuming the pending shot press. */
   peek(): BattingIntent {
     const b = this.bindings;
+    // Front wins if both are somehow down: it is the default stance, and a
+    // stuck key should not quietly leave the batsman on the back foot.
     let footwork: Footwork = "none";
     if (this.anyHeld(b.frontFoot)) footwork = "front";
     else if (this.anyHeld(b.backFoot)) footwork = "back";
 
-    let aim = 0;
-    if (this.anyHeld(b.aimOff)) aim -= 1;
-    if (this.anyHeld(b.aimLeg)) aim += 1;
+    const off = this.anyHeld(b.aimOff);
+    const leg = this.anyHeld(b.aimLeg);
+    const straight = this.anyHeld(b.straight);
+    const advance = this.anyHeld(b.advance);
 
     return {
-      footwork, aim, shot: this.pendingShot, square: this.anyHeld(b.square),
-      moveX: Number(this.anyHeld(b.moveRight)) - Number(this.anyHeld(b.moveLeft)),
-      moveForward: Number(this.anyHeld(b.moveForward)) - Number(this.anyHeld(b.moveBack)),
+      footwork,
+      aim: Number(leg) - Number(off),
+      shot: this.pendingShot,
+      // Left or right ALONE is square of the wicket; adding down straightens it.
+      square: (off || leg) && !straight,
+      leave: this.anyHeld(b.leave),
+      advance,
+      // Pre-delivery, the same arrows walk the batsman about his crease. Coming
+      // down the wicket is a forward move too, and overrides the arrows.
+      moveX: Number(leg) - Number(off),
+      moveForward: advance ? 1 : Number(this.anyHeld(b.defend)) - Number(straight),
     };
   }
 
@@ -140,14 +177,29 @@ export class BattingController {
     return was;
   }
 
-  /** Bowling uses its own intent so aiming/locking can never trigger the AI's bat. */
+  consumeBallLineToggle(): boolean {
+    const was = this.ballLinePressed;
+    this.ballLinePressed = false;
+    return was;
+  }
+
+  /**
+   * Bowling uses its own intent so aiming/locking can never trigger the AI's bat.
+   *
+   * The original's bowling keys are the same four: the arrows move the landing
+   * marker, W and S are the quicker and slower ball, and A and D are the swing
+   * or spin either way.
+   */
   consumeBowling() {
+    const b = this.bindings;
     const lock = this.bowlingLockPressed;
     this.bowlingLockPressed = false;
     return {
-      x: Number(this.anyHeld(["KeyD", "ArrowRight"])) - Number(this.anyHeld(["KeyA", "ArrowLeft"])),
-      forward: Number(this.anyHeld(["KeyW", "ArrowUp"])) - Number(this.anyHeld(["KeyS", "ArrowDown"])),
-      pace: Number(this.held.has("KeyE")) - Number(this.held.has("KeyQ")), lock,
+      x: Number(this.anyHeld(b.aimLeg)) - Number(this.anyHeld(b.aimOff)),
+      forward: Number(this.anyHeld(b.defend)) - Number(this.anyHeld(b.straight)),
+      pace: Number(this.anyHeld(b.backFoot)) - Number(this.anyHeld(b.frontFoot)),
+      swing: Number(this.anyHeld(b.advance)) - Number(this.anyHeld(b.leave)),
+      lock,
     };
   }
 
