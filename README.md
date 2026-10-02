@@ -44,28 +44,86 @@ The final level mixes all five bowling styles between deliveries.
 
 ## Controls
 
+These are Cricket 07's own keyboard controls, not a scheme of our own.
+
 | Keys | Action |
 |---|---|
-| W / A / S / D | Move forward / screen-left / back / screen-right during run-up |
-| ↑ / ↓ | Override automatic front/back-foot selection |
-| ← / → | Aim screen-left / screen-right |
-| Z | Defend |
-| X or Space | Ground shot |
-| C | Loft |
-| Shift | Play squarer |
-| R | Bowl the next delivery |
-| V | Switch batting / TV camera |
+| S | Front-foot shot |
+| W | Back-foot shot |
+| ↑ + S / W | Defend |
+| Shift + S / W | Loft it |
+| ← / → | Aim square of the wicket, screen-left / screen-right |
+| ↓ + ← / → | Play the same stroke straighter |
+| A | Leave it |
+| D | Come down the wicket |
+| ← ↑ ↓ → | Move about the crease, until the ball is out of the hand |
 
-Timing is judged on **when** the shot key goes down relative to the ball, not on
-which key — that is why shot type sits on its own keys rather than as a modifier.
-Press when the meter enters green. Its timing comes from the same contact
-prediction as the batting logic, including your moved position and footwork.
-Without ↑/↓, footwork is chosen automatically from the delivery's length.
+The part that is easy to miss: **S and W are the shot**, not modifiers. One press
+commits the footwork, the swing and the timing together, which is why the
+original feels the way it does. Timing is judged on *when* that key goes down
+relative to the ball; press it as the meter enters green. Which stroke it is
+comes from what is held at that instant, so the modifier has to be down first.
+
+The arrows do double duty exactly as the original's left stick does: before the
+ball is bowled they walk the batsman about his crease, and once it is out of the
+hand they are the shot's direction. Nothing switches them by hand — the
+delivery's phase does. Footwork is chosen automatically from the length unless
+S or W is already held during the run-up.
+
+These three are ours, on keys the original leaves free:
+
+| Keys | Action |
+|---|---|
+| Space / Enter (or R) | Bowl the next delivery |
+| C | Switch batting / TV camera |
+| L | Show or hide the ball line |
 
 The cyan pitch ring pulses and drifts during the run-up, then locks green as the
 bowler enters the delivery stride. It marks the predicted first bounce, including
-aerodynamic drift, and fades after pitching. WASD movement stops at release and
+aerodynamic drift, and fades after pitching. Crease movement stops at release and
 resets before the next ball.
+
+### The ball line
+
+The ball draws its own path, in three colours that are three separate pieces of
+information:
+
+| Colour | Leg |
+|---|---|
+| Pale cyan | In the air, out of the hand, before it pitches |
+| Amber | Off the deck — the kink against the cyan **is** the seam or spin deviation |
+| Hot orange | Off the bat |
+
+A scuff mark is left at the exact point the ball pitched, and the line runs from
+the bowler's hand to wherever the ball ends up. It stops when a fielder gathers
+it, so a throw back to the keeper is never drawn as though it came off the bat,
+and it is cleared behind the cut to the next delivery rather than blinking out.
+Press **L** to turn it off.
+
+The path is sampled by distance rather than per frame — a 40 m/s delivery covers
+0.66 m in a frame and a ball trickling to a fielder covers 0.01 m, so per-frame
+sampling gives a sparse line through the air and hundreds of stacked points at
+the end of it. A struck ball that runs a long way thins its line rather than
+truncating it.
+
+### What the strip shows
+
+The score bar is derived from the scorebook on every render rather than stored,
+so a number on it can never disagree with the balls that produced it:
+
+- score, overs and both batsmen's runs (balls faced)
+- the release speed, held from the moment of release and unaffected by bat
+  contact or a fielder's throw
+- the over in progress, read out as a commentator would: `1 • 4 W •`
+- the partnership — runs and balls since the last wicket
+- the bowler's figures in `O-M-R-W` form. Runs are what is *charged* to him:
+  wides and no-balls are his, byes and leg-byes are not, and a run-out is not
+  his wicket. An over that costs him nothing is a maiden even if byes were run
+  off it.
+- the run rate, and the required rate while there is still something to ask for
+
+Items drop from the middle outwards as the viewport narrows; the score, the pace
+and the figures are the last to go.
 
 Well-timed attacking shots have enough power for fours and sixes against pace
 and spin. Placement still matters: ground shots into a fielder can be stopped,
@@ -78,17 +136,27 @@ The selected player determines the delivery action, stock seam/spin and availabl
 pace range. Select a different bowler between deliveries; his style stays fixed
 throughout the run-up. Batting-ladder progress is separate and unaffected.
 After six legal balls, an unfinished innings pauses at the bowler picker.
-Choose the next bowler and pace, then click **Start next over**; R cannot skip
-this pause, and wides do not advance the over.
+Choose the next bowler and pace, then click **Start next over**; the bowl key
+cannot skip this pause, and wides do not advance the over.
+
+Bowling uses the original's same four keys:
 
 | Controls | Bowling action |
 |---|---|
-| R / Bowl button | Start the run-up |
-| A / D or ← / → | Move the landing circle screen-left/right |
-| W / S or ↑ / ↓ | Fuller / shorter length |
-| Q / E or pace slider | Slower / faster within the selected bowler's range |
+| Space / Enter (or Bowl button) | Start the run-up |
+| ← / → | Move the landing circle screen-left/right |
+| ↑ / ↓ | Fuller / shorter length |
+| W / S or pace slider | The quicker and slower ball, within the bowler's range |
+| A / D | Seam or revolutions (see below) |
 | Space | Lock line, length and pace early |
-| V | Switch camera; bowling starts in the behind-bowler TV view |
+| C | Switch camera; bowling starts in the behind-bowler TV view |
+
+A / D mean different things depending on who is bowling, and the panel names
+them for whoever it is. For a seamer they tilt the seam, so the ball swings away
+from the right-hander or into him — up to just short of the 20-degree angle
+where the side force peaks. For a spinner the direction of turn belongs to his
+action and cannot be chosen, so the same keys are how hard the ball is spun:
+a big ripper one way, an arm ball the other.
 
 The ring pulses cyan while editable, then turns green when locked. If Space is
 not pressed, it locks automatically near the end of the run-up. The locked

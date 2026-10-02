@@ -91,7 +91,14 @@ export default function GameCanvas() {
             <DeliveryPanel live={live} telemetry={telemetry} />
             <FieldRadar live={live} />
             <ShotMeter live={live} balls={telemetry.match.ballsThisOver} />
-            <ScorePlate match={telemetry.match} live={live} team={telemetry.mode === "bowling" ? "IND · AI" : "IND"} />
+            <ScorePlate
+              match={telemetry.match}
+              live={live}
+              team={telemetry.mode === "bowling" ? "IND · AI" : "IND"}
+              // Whoever is batting is chasing something, so the strip can ask
+              // for a required rate in either mode.
+              chase={telemetry.mode === "bowling" ? telemetry.bowling : telemetry.challenge}
+            />
             {telemetry.mode === "batting"
               ? <ChallengePanel telemetry={telemetry} select={(level) => gameRef.current?.selectLevel(level)} bowl={() => gameRef.current?.bowl()} menu={() => gameRef.current?.showLevelSelect()} bowling={() => gameRef.current?.startBowling()} />
               : <BowlingPanel live={live} telemetry={telemetry} selectBowler={(i) => gameRef.current?.selectPlayerBowler(i)} pace={(value) => gameRef.current?.setPlayerPace(value)} bowl={() => gameRef.current?.bowl()} retry={() => gameRef.current?.startBowling()} menu={() => gameRef.current?.showLevelSelect()} nextOver={() => gameRef.current?.confirmBowlerChange()} />}

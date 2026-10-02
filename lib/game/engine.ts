@@ -1432,7 +1432,7 @@ export class Game {
       wide: this.mode === "bowling" && this.deliveryWide && !dead.dismissal,
     });
     const before = this.match;
-    this.match = applyBall(this.match, outcome);
+    this.match = applyBall(this.match, outcome, this.bowlerName());
     this.bowlerChangePending = this.mode === "bowling" && shouldChangeBowler(before, this.match);
     const status = this.mode === "bowling" ? bowlingStatus(this.match) : challengeStatus(CHALLENGES[this.level], this.match);
     if (status.result !== "playing") {
@@ -1446,6 +1446,20 @@ export class Game {
       this.lastEvent = this.describe(outcome, dead.dismissal);
     }
     this.runsToRun = 0;
+  }
+
+  /**
+   * Who the scorebook should put this ball against.
+   *
+   * Bowling at the AI there is a named player. Batting a challenge there is not
+   * — the opposition is generated from a style per over — so the style IS the
+   * bowler's identity, and figures accumulate per style across the innings,
+   * which is exactly how the challenge rotates them.
+   */
+  private bowlerName(): string {
+    if (this.mode === "bowling") return BOWLERS[this.playerBowler].name;
+    const style = this.style.replace(/-/g, " ");
+    return style.charAt(0).toUpperCase() + style.slice(1);
   }
 
   private describe(outcome: ReturnType<typeof toOutcome>, dismissal: Dismissal | null): string {

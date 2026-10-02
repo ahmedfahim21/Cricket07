@@ -89,7 +89,9 @@ try {
       if (aim) key(aim, false);
       if (move) key(move, false);
       return { band, meterError, style: g.style, score: g.match.runs, wickets: g.match.wickets, event: g.lastEvent, bounceError, markerSeen, markerStable, frozen, releasePosition: releasePosition?.toArray(), timeline: [...g.match.timeline], celebrationRuns, immediateCelebration, umpireCutSeen, celebrationCleared: g.live.boundaryRuns === null,
-        trail, markError, trailCleared: g.trail.count("flight") === 0 && g.trail.count("struck") === 0 };
+        trail, markError, trailCleared: g.trail.count("flight") === 0 && g.trail.count("struck") === 0,
+        bowlers: structuredClone(g.match.bowlers), partnership: { ...g.match.partnership }, thisOver: [...g.match.thisOver],
+        extras: g.match.extras, overs: g.match.overs, ballsThisOver: g.match.ballsThisOver };
     };
   });
   const report = await page.evaluate(() => {
@@ -102,6 +104,24 @@ try {
     return { deliveries, complete: g.match.complete, unlocked: g.progress.unlocked };
   });
   console.log("Opening chase:", report.deliveries.map((d) => d.event).join(", "));
+  {
+    // In-match figures must be derivable from the balls that were actually
+    // bowled, not merely plausible: the scorebook is the only authority.
+    const last = report.deliveries.at(-1);
+    const bowled = last.overs * 6 + last.ballsThisOver;
+    const charged = last.bowlers.reduce((n, b) => n + b.runs, 0);
+    const balls = last.bowlers.reduce((n, b) => n + b.balls, 0);
+    const wickets = last.bowlers.reduce((n, b) => n + b.wickets, 0);
+    console.log("Figures:", last.bowlers.map((b) => `${b.name} ${b.balls}b ${b.runs}r ${b.wickets}w ${b.maidens}m`).join("; "),
+      `| p'ship ${last.partnership.runs} (${last.partnership.balls}) | this over ${last.thisOver.join(" ")}`);
+    assert.ok(last.bowlers.length > 0, "every delivery must be charged to a bowler");
+    assert.equal(balls, bowled, "a bowler's legal balls must match the over count");
+    assert.equal(last.partnership.balls, bowled, "an unbroken partnership has faced every legal ball");
+    assert.equal(last.partnership.runs, last.score, "an unbroken opening partnership is the whole score");
+    assert.equal(last.thisOver.length, last.ballsThisOver, "no extras were bowled, so the over's reading is its ball count");
+    assert.equal(charged, last.score - last.extras, "runs charged must be the score less the extras nobody bowled");
+    assert.ok(wickets <= last.wickets, "a bowler can never be credited more wickets than fell");
+  }
   assert.equal(report.unlocked, 1, "timed lofts should win level one through the real engine");
   await page.getByRole("heading", { name: "Chase complete!" }).waitFor();
   await page.screenshot({ path: "/private/tmp/cricket-result.png" });

@@ -106,7 +106,26 @@ main {
 }
 
 .broadcast-overs { color: #e0e5d6; font-size: 12px; white-space: nowrap; }
-.broadcast-batsmen { margin-left: auto; margin-right: var(--broadcast-inset); }
+
+/* Small caps caption on the strip. Letter-spacing carries it, not weight. */
+.broadcast-label {
+  display: block;
+  font-size: 9px;
+  letter-spacing: .18em;
+  color: var(--hud-muted);
+}
+.broadcast-thisover, .broadcast-bowler, .broadcast-partnership, .broadcast-rates { white-space: nowrap; }
+.broadcast-thisover-balls { color: #e9f0df; font-size: 13px; letter-spacing: .09em; }
+.broadcast-bowler { display: flex; flex-direction: column; }
+.broadcast-rates { display: flex; gap: clamp(10px, 1.1vw, 20px); }
+.broadcast-batsmen { display: flex; align-items: center; gap: clamp(12px, 1.3vw, 22px); }
+.broadcast-right {
+  display: flex;
+  align-items: center;
+  gap: clamp(14px, 1.7vw, 32px);
+  margin-left: auto;
+  margin-right: var(--broadcast-inset);
+}
 .broadcast-meter {
   position: absolute;
   left: var(--broadcast-inset);
@@ -155,8 +174,13 @@ main {
 /* Bowling already exposes its key hints in the interactive panel. */
 main:has(.broadcast-bowling-panel) .broadcast-controls { display: none; }
 
+@media (max-width: 1280px) {
+  /* The over's reading and the partnership are the first things a narrow strip
+     can do without: the score, the pace and the figures are not. */
+  .broadcast-thisover, .broadcast-partnership { display: none; }
+}
 @media (max-width: 900px) {
-  .broadcast-batsmen { display: none; }
+  .broadcast-batsmen, .broadcast-rates { display: none; }
   .broadcast-delivery { width: 195px; height: 145px; }
   .broadcast-delivery-screen { padding: 6px; }
   .broadcast-radar { width: 155px; }
@@ -165,7 +189,7 @@ main:has(.broadcast-bowling-panel) .broadcast-controls { display: none; }
 @media (max-width: 600px) {
   main { --broadcast-inset: 12px; --broadcast-baseline: 3vh; }
   .broadcast-score-team { width: 190px; font-size: 22px; }
-  .broadcast-overs { display: none; }
+  .broadcast-overs, .broadcast-bowler { display: none; }
   .broadcast-delivery { top: 110px; width: 175px; height: 135px; }
   .broadcast-radar { top: 112px; width: 135px; }
   .broadcast-controls { max-width: 55vw; font-size: 9px; padding: 8px; }
