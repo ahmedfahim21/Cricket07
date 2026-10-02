@@ -141,6 +141,9 @@ export class BattingController {
       footwork,
       aim: Number(leg) - Number(off),
       shot: this.pendingShot,
+      // Resolved the same way a press would resolve it, so what the HUD shows
+      // and what the press plays can never disagree.
+      nextShot: this.shotType(),
       // Left or right ALONE is square of the wicket; adding down straightens it.
       square: (off || leg) && !straight,
       leave: this.anyHeld(b.leave),

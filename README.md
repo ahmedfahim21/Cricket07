@@ -58,6 +58,12 @@ These are Cricket 07's own keyboard controls, not a scheme of our own.
 | D | Come down the wicket |
 | ← ↑ ↓ → | Move about the crease, until the ball is out of the hand |
 
+Every one of these except S and W is a modifier that moves nothing on its own,
+so the gauge carries a live readout of what is held — the foot, the stroke the
+next press will play, the aim, and whether you are leaving or charging. Without
+it a working modifier is indistinguishable from an unbound key, and the first
+you learn that Shift registered is when the ball is already in the air.
+
 The part that is easy to miss: **S and W are the shot**, not modifiers. One press
 commits the footwork, the swing and the timing together, which is why the
 original feels the way it does. Timing is judged on *when* that key goes down
@@ -85,20 +91,33 @@ resets before the next ball.
 
 ### The ball line
 
-The ball draws its own path, in three colours that are three separate pieces of
-information:
+The delivery and the shot are not the same drawing problem, and are not drawn
+alike.
 
-| Colour | Leg |
+**The delivery is information.** Two thin flat lines — pale cyan in the air out
+of the hand, amber once it is off the deck. The kink between them *is* the seam
+or spin deviation, and a scuff mark is left at the exact point it pitched. That
+is all they are for.
+
+**The shot is the moment.** Off the bat it becomes proper ball tracking, built
+from three passes drawn over each other:
+
+| Pass | What it does |
 |---|---|
-| Pale cyan | In the air, out of the hand, before it pitches |
-| Amber | Off the deck — the kink against the cyan **is** the seam or spin deviation |
-| Hot orange | Off the bat |
+| Shadow | The arc projected flat onto the turf, directly beneath itself. This is the one that sells **height** — without it a six and a flat drive read the same from behind, because the screen is two-dimensional. |
+| Core | The arc, graded along its length from deep red where the bat met it to white-hot at the ball, so it reads as *travelling* rather than as a line that happens to be there. |
+| Glow | A wide additive bloom over the leading stretch only, so the head burns and the tail falls away: a comet, not a stripe. |
 
-A scuff mark is left at the exact point the ball pitched, and the line runs from
-the bowler's hand to wherever the ball ends up. It stops when a fielder gathers
-it, so a throw back to the keeper is never drawn as though it came off the bat,
-and it is cleared behind the cut to the next delivery rather than blinking out.
-Press **L** to turn it off.
+The line runs from the bowler's hand to wherever the ball ends up. It stops when
+a fielder gathers it, so a throw back to the keeper is never drawn as though it
+came off the bat, and it is cleared behind the cut to the next delivery rather
+than blinking out. Press **L** to turn it off.
+
+Note the lines deliberately do *not* use `alphaToCoverage`: it turns alpha into
+MSAA coverage samples, and this pipeline renders to a plain half-float target
+and anti-aliases with FXAA. There are no samples to resolve, so a
+semi-transparent line comes out as a harsh dither — which is what was drawing
+the ground shadow as a dotted line.
 
 The path is sampled by distance rather than per frame — a 40 m/s delivery covers
 0.66 m in a frame and a ball trickling to a fielder covers 0.01 m, so per-frame

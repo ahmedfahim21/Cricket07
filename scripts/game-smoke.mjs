@@ -172,6 +172,42 @@ try {
     if (shot.shot === "defensive") assert.ok(shot.score < 4, "defence should remain soft");
   }
   assert.ok(shots.some((shot) => shot.shot === "ground" && shot.event === "FOUR"), "ground shots should reach gaps");
+  // The batting modifiers are all invisible on their own; the readout is the
+  // only confirmation they registered, so it has to track them exactly.
+  const readout = await page.evaluate(() => {
+    const key = (code, down) => window.dispatchEvent(new KeyboardEvent(down ? "keydown" : "keyup", { code }));
+    const g = window.__game;
+    const seen = [];
+    g.selectLevel(0); g.bowl();
+    const held = ["ShiftLeft", "ArrowRight", "KeyD"];
+    for (const code of held) key(code, true);
+    for (let i = 0; i < 60 && g.phase === "runup"; i++) g.update(1 / 60);
+    seen.push({ at: "runup", ...structuredClone(g.live.intent), z: g.strikerRoot.z });
+    for (const code of held) key(code, false);
+
+    // A tapped during the approach must still be leaving once the ball is bowled.
+    key("KeyA", true);
+    g.update(1 / 60);
+    key("KeyA", false);
+    const armed = g.leaveArmed;
+    for (let i = 0; i < 2400 && g.phase === "runup"; i++) g.update(1 / 60);
+    for (let i = 0; i < 30 && g.phase === "flight"; i++) g.update(1 / 60);
+    seen.push({ at: "flight", ...structuredClone(g.live.intent), leaving: g.leaving, feedback: g.live.shotFeedback });
+    for (let i = 0; i < 2400 && g.phase !== "idle"; i++) g.update(1 / 60);
+    return { seen, armed, cleared: structuredClone(g.live.intent) };
+  });
+  console.log("Readout:", JSON.stringify(readout.seen));
+  {
+    const [runup, flight] = readout.seen;
+    assert.ok(runup.shot === "lofted" && runup.square && runup.aim === 1 && runup.advance,
+      "the readout must light every modifier being held during the approach");
+    assert.ok(runup.z > -9.2, "D must actually walk him down the wicket");
+    assert.ok(readout.armed, "leaving decided during the approach must stick");
+    assert.ok(flight.leave && flight.leaving && flight.feedback === "Left alone",
+      "a leave tapped in the run-up must fire, and say so");
+    assert.ok(!readout.cleared.leave && !readout.cleared.advance, "the readout must reset with the delivery");
+  }
+
   const movement = await page.evaluate(() => {
     const g = window.__game;
     const result = [];

@@ -59,6 +59,7 @@ main {
   --broadcast-baseline: 6.3vh;
   --broadcast-strip: clamp(38px, 5.5vh, 58px);
   --broadcast-inset: clamp(20px, 4.7vw, 90px);
+  --broadcast-meter-w: clamp(140px, 15.4vw, 265px);
 }
 
 .broadcast-score {
@@ -130,7 +131,7 @@ main {
   position: absolute;
   left: var(--broadcast-inset);
   bottom: calc(var(--broadcast-baseline) + var(--broadcast-strip) + 15px);
-  width: clamp(140px, 15.4vw, 265px);
+  width: var(--broadcast-meter-w);
 }
 .broadcast-over { position: absolute; left: 7%; right: 3%; bottom: 9%; display: flex; gap: 6px; }
 .broadcast-over span {
@@ -144,6 +145,55 @@ main {
 }
 .broadcast-over span::after { content: ""; display: block; width: 42%; height: 90%; border-left: 2px solid #52604f; border-radius: 50%; margin-left: 28%; }
 .broadcast-over .is-bowled { filter: brightness(.45); }
+/*
+ * The held-input readout, under the timing gauge where the player's eye is.
+ *
+ * Lit by colour and opacity rather than by weight: the chips have to be
+ * readable at a glance without any of them shouting.
+ */
+.broadcast-intent {
+  position: absolute;
+  /* Beside the gauge, not over it: the gauge already owns that corner, and the
+     readout must not cover the timing label it is read alongside. */
+  left: calc(var(--broadcast-inset) + var(--broadcast-meter-w) + 14px);
+  bottom: calc(var(--broadcast-baseline) + var(--broadcast-strip) + 15px);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  pointer-events: none;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 9px;
+  letter-spacing: .12em;
+}
+.broadcast-intent-row { display: flex; gap: 4px; }
+.broadcast-intent i,
+.broadcast-intent b {
+  padding: 2px 6px;
+  border: 1px solid #2a3528;
+  border-radius: 2px;
+  background: #121a1299;
+  color: #5d6b58;
+  font-style: normal;
+  font-weight: inherit;
+  transition: color .08s linear, background-color .08s linear, border-color .08s linear;
+}
+.broadcast-intent i.is-on {
+  border-color: #7dd66a66;
+  background: #1d3a1ddd;
+  color: var(--hud-green);
+}
+/* The charge and the leave are commitments, not aims: they read warmer. */
+.broadcast-intent i[data-chip="leave"].is-on,
+.broadcast-intent i[data-chip="advance"].is-on {
+  border-color: #e8c44a66;
+  background: #3a311ddd;
+  color: var(--hud-amber);
+}
+/* Only shown when the foot was chosen for you rather than by you. */
+.broadcast-intent-auto { visibility: hidden; }
+.broadcast-intent[data-auto="true"] .broadcast-intent-auto { visibility: visible; }
+
 .broadcast-radar { position: absolute; right: var(--broadcast-inset); top: 4.5vh; width: clamp(160px, 18vw, 320px); }
 .broadcast-delivery {
   position: absolute;
@@ -188,6 +238,7 @@ main:has(.broadcast-bowling-panel) .broadcast-controls { display: none; }
 }
 @media (max-width: 600px) {
   main { --broadcast-inset: 12px; --broadcast-baseline: 3vh; }
+  .broadcast-intent { display: none; }
   .broadcast-score-team { width: 190px; font-size: 22px; }
   .broadcast-overs, .broadcast-bowler { display: none; }
   .broadcast-delivery { top: 110px; width: 175px; height: 135px; }

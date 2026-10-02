@@ -114,6 +114,15 @@ export interface BattingIntent {
   aim: number;
   /** Set on the frame the shot key goes down; null on every other frame. */
   shot: ShotType | null;
+  /**
+   * The stroke a press WOULD play right now, given what is held.
+   *
+   * Unlike `shot` this is set on every frame. It exists so the HUD can show the
+   * player which stroke he has armed before he commits to it — without it, a
+   * modifier like Shift is invisible until the ball is already in the air, and
+   * a key that shows no sign of being read feels unbound.
+   */
+  nextShot: ShotType;
   square: boolean;
   /** True while the leave key is held: no stroke will be offered. */
   leave: boolean;
@@ -127,6 +136,7 @@ export const NEUTRAL_INTENT: BattingIntent = {
   footwork: "none",
   aim: 0,
   shot: null,
+  nextShot: "ground",
   square: false,
   leave: false,
   advance: false,
@@ -141,7 +151,7 @@ export const CONTROL_HELP: { keys: string; action: string }[] = [
   { keys: "← / →", action: "Square of the wicket" },
   { keys: "↓ + ← / →", action: "Straighter" },
   { keys: "A", action: "Leave it" },
-  { keys: "D", action: "Down the wicket" },
+  { keys: "D", action: "Down the wicket (run-up)" },
   { keys: "← ↑ ↓ →", action: "Move in the crease (run-up)" },
 ];
 

@@ -53,7 +53,7 @@ import { moveAtCrease } from "./input/movement";
 import { RUN_TIME, fieldFor, runsAvailable, type FieldPosition } from "./match/fielding";
 import { applyBall, newInnings, toOutcome, type Dismissal, type MatchState } from "./match/state";
 import { BattingController } from "./input/controller";
-import type { Footwork, ShotType } from "./input/bindings";
+import type { BattingIntent, Footwork, ShotType } from "./input/bindings";
 import { C, applyPose, copyPose, makePose, sweetSpot } from "./anim/pose";
 import { APPROACH, BowlerAnimator, deliveryOrigin, simulateRelease } from "./anim/bowler";
 import { BatsmanAnimator, CONTACT_X } from "./anim/batsman";
@@ -92,6 +92,15 @@ export interface LiveState {
   /** Seconds from the ideal press; negative is early, null means no contact ahead. */
   timingError: number | null;
   shotFeedback: string;
+  /**
+   * What the player is holding, republished every frame.
+   *
+   * The HUD needs this because most of the batting controls are modifiers, and
+   * a modifier that shows no sign of being read is indistinguishable from an
+   * unbound key: Shift is invisible until the ball is already in the air, and
+   * leaving or charging has nothing on screen at all.
+   */
+  intent: { shot: ShotType; aim: number; square: boolean; leave: boolean; advance: boolean; manualFootwork: boolean };
   footwork: Footwork;
   phase: Phase;
   ballX: number;
@@ -325,6 +334,14 @@ export class Game {
   private left = false;
   /** The player pressed leave: withdraw the bat and refuse a later stroke. */
   private leaving = false;
+  /**
+   * Leave decided during the run-up, honoured on the first frame of flight.
+   *
+   * Without this the leave key is dead for the whole approach — which is
+   * exactly when a batsman decides to leave one — and a tap of it before
+   * release simply vanishes.
+   */
+  private leaveArmed = false;
   private pending: PendingShot | null = null;
   private struck = false;
   private contactClock = 0;
@@ -357,6 +374,7 @@ export class Game {
     momentShot: null,
     timingError: null,
     shotFeedback: "",
+    intent: { shot: "ground", aim: 0, square: false, leave: false, advance: false, manualFootwork: false },
     footwork: "front",
     phase: "idle",
     ballX: 0,
@@ -582,6 +600,8 @@ export class Game {
     this.shotPlayed = false;
     this.left = false;
     this.leaving = false;
+    this.leaveArmed = false;
+    this.publishIntent(null);
     this.pending = null;
     this.struck = false;
     this.outcome = null;
@@ -815,6 +835,13 @@ export class Game {
       if (bowling.lock || this.bowler.runupProgress >= 0.9) this.lockBowlingAim();
     }
     this.live.bowling.runup = this.bowler.runupProgress;
+    // Deciding to leave during the approach sticks; choosing a foot instead
+    // cancels it, so the last decision made before the ball is bowled wins.
+    if (this.mode === "batting") {
+      if (intent.leave) this.leaveArmed = true;
+      else if (intent.footwork !== "none") this.leaveArmed = false;
+    }
+    this.publishIntent(this.mode === "bowling" ? null : intent);
     const advancing = this.mode === "batting" && intent.advance;
     const offset = this.mode === "bowling" ? { x: 0, z: 0 }
       : moveAtCrease({ x: this.strikerRoot.x - STRIKER_ROOT.x, z: this.strikerRoot.z - STRIKER_ROOT.z }, intent.moveX, intent.moveForward, dt, this.aimScreenSign(), advancing);
@@ -847,6 +874,7 @@ export class Game {
 
     const { intent, shotAt } = this.input.consume();
     this.input.consumeBowling();
+    this.publishIntent(this.mode === "bowling" ? null : intent);
     if (this.mode === "bowling") this.updateAiBatsman();
     else if (!this.shotPlayed) {
       const footwork = this.selectedFootwork(intent.footwork);
@@ -855,7 +883,7 @@ export class Game {
       this.live.timingError = prediction?.timingError ?? null;
       // An explicit leave withdraws the bat for good. Tracked apart from the
       // automatic leave below, which fires late and must still allow a stroke.
-      if (intent.leave && !this.leaving) {
+      if ((intent.leave || this.leaveArmed) && !this.leaving) {
         this.leaving = true;
         this.left = true;
         this.striker.bat.leave();
@@ -1788,6 +1816,22 @@ export class Game {
     this.bowlingAim.pace = THREE.MathUtils.clamp(pace, 0, 1);
     this.live.bowling.aim = { ...this.bowlingAim };
     this.emitTelemetry(999);
+  }
+
+  /**
+   * Mirror what the player is holding into `live` for the HUD.
+   *
+   * Zeroed while bowling: the batting modifiers mean nothing there, and showing
+   * a stroke the player cannot play is worse than showing none.
+   */
+  private publishIntent(intent: BattingIntent | null): void {
+    const i = this.live.intent;
+    i.shot = intent?.nextShot ?? "ground";
+    i.aim = intent?.aim ?? 0;
+    i.square = intent?.square ?? false;
+    i.leave = (intent?.leave || this.leaveArmed || this.leaving) ?? false;
+    i.advance = intent?.advance ?? false;
+    i.manualFootwork = (intent?.footwork ?? "none") !== "none";
   }
 
   /** Resolve manual/automatic footwork and publish the choice to the timing HUD. */

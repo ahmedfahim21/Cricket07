@@ -52,6 +52,24 @@ describe("Cricket 07 batting controls", () => {
     expect(controller.consume().intent.shot).toBe("defensive");
   });
 
+  it("reports the armed stroke every frame, not only on the press", () => {
+    // The whole point: a held modifier has to be visible before you commit, or
+    // a working key is indistinguishable from an unbound one.
+    expect(controller.peek().nextShot).toBe("ground");
+    down("ShiftLeft");
+    expect(controller.peek()).toMatchObject({ nextShot: "lofted", shot: null });
+    down("ArrowUp");
+    expect(controller.peek().nextShot).toBe("defensive");
+    up("ArrowUp", "ShiftLeft");
+    expect(controller.peek().nextShot).toBe("ground");
+
+    // And it always agrees with what a press would actually queue.
+    down("ShiftLeft");
+    const armed = controller.peek().nextShot;
+    down("KeyS");
+    expect(controller.consume().intent.shot).toBe(armed);
+  });
+
   it("holding the modifier AFTER the press cannot change the stroke", () => {
     down("KeyS");
     down("ShiftLeft");

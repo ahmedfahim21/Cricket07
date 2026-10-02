@@ -8,6 +8,7 @@ import { FadeOverlay } from "./hud/FadeOverlay";
 import { FieldRadar } from "./hud/FieldRadar";
 import { ScorePlate } from "./hud/ScorePlate";
 import { ShotMeter } from "./hud/ShotMeter";
+import { ShotIntent } from "./hud/ShotIntent";
 import { ChallengePanel } from "./hud/ChallengePanel";
 import { BoundaryCelebration } from "./hud/BoundaryCelebration";
 import { WicketPresentation } from "./hud/WicketPresentation";
@@ -91,6 +92,7 @@ export default function GameCanvas() {
             <DeliveryPanel live={live} telemetry={telemetry} />
             <FieldRadar live={live} />
             <ShotMeter live={live} balls={telemetry.match.ballsThisOver} />
+            <ShotIntent live={live} />
             <ScorePlate
               match={telemetry.match}
               live={live}
