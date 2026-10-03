@@ -32,29 +32,25 @@ import json
 import math
 import os
 import sys
-from mathutils import Quaternion, Vector
+from mathutils import Vector
 
-from bl_ext.blender_org.mpfb.services.humanservice import HumanService
-from bl_ext.blender_org.mpfb.services.targetservice import TargetService
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from common import (  # noqa: E402
+    HERE, ROOT, SKINNED, b2g, centroid, clamp, dominant, export, fit, g2b, group_weights,
+    merge_weights, reset, select_only, smoothstep,
+)
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(os.path.dirname(HERE))
+from bl_ext.blender_org.mpfb.services.humanservice import HumanService  # noqa: E402
+from bl_ext.blender_org.mpfb.services.targetservice import TargetService  # noqa: E402
+
 OUT = os.path.join(ROOT, "public", "models", "players")
-
-RIG = json.load(open(os.path.join(HERE, "rig.json")))
-SPEC = json.load(open(os.path.join(HERE, "builds.json")))
-BUILDS = SPEC["builds"]
-HAIR_STYLES = SPEC["hairStyles"]
-BEARD_STYLES = SPEC["beardStyles"]
-JOINTS = {j["name"]: j for j in RIG["joints"]}
-ORDER = [j["name"] for j in RIG["joints"]]
+SPEC_FILE = json.load(open(os.path.join(HERE, "builds.json")))
+BUILDS = SPEC_FILE["builds"]
+HAIR_STYLES = SPEC_FILE["hairStyles"]
+BEARD_STYLES = SPEC_FILE["beardStyles"]
 
 # Fraction of faces kept on the body (the head and hands are left whole).
 DECIMATE = float(os.environ.get("PLAYER_DECIMATE", "0.5"))
-
-# Hand joints in the game mark the centre of the fist and are never rotated,
-# so the hand is weighted to the forearm and moves rigidly with it.
-SKINNED = [n for n in ORDER if not n.startswith("hand")]
 
 FINGERS = ("thumb", "index", "middle", "ring", "pinky")
 
@@ -89,92 +85,6 @@ UP = Vector((0, 0, 1))
 
 
 # --------------------------------------------------------------------------
-# Coordinates. MPFB faces -Y with the player's left at +X; the game faces -Z
-# with the player's right at +X.
-# --------------------------------------------------------------------------
-
-def b2g(v):
-    return Vector((-v.x, v.z, v.y))
-
-
-def g2b(v):
-    return Vector((-v.x, v.z, v.y))
-
-
-def clamp(x, lo=0.0, hi=1.0):
-    return lo if x < lo else hi if x > hi else x
-
-
-def smoothstep(a, b, x):
-    t = clamp((x - a) / (b - a))
-    return t * t * (3 - 2 * t)
-
-
-# --------------------------------------------------------------------------
-# The game skeleton's bind pose
-# --------------------------------------------------------------------------
-
-def aim(local_from, parent_world_rot, world_dir):
-    """Local rotation that turns `local_from` (in the joint's parent frame) to `world_dir`."""
-    want = parent_world_rot.inverted() @ world_dir.normalized()
-    return local_from.normalized().rotation_difference(want)
-
-
-def bind_pose(dirs):
-    """FK over rig.json with each joint aimed along MPFB's direction for it."""
-    local, pos, rot = {}, {}, {}
-    for name in ORDER:
-        j = JOINTS[name]
-        parent = j["parent"]
-        prot = rot[parent] if parent else Quaternion()
-        ppos = pos[parent] if parent else Vector((0, 0, 0))
-        pos[name] = ppos + prot @ Vector(j["offset"])
-        q = aim(dirs[name][0], prot, dirs[name][1]) if name in dirs else Quaternion()
-        local[name] = q
-        rot[name] = prot @ q
-    return local, pos, rot
-
-
-# --------------------------------------------------------------------------
-# Helpers
-# --------------------------------------------------------------------------
-
-def reset():
-    bpy.ops.wm.read_factory_settings(use_empty=True)
-
-
-def select_only(*objs):
-    if bpy.context.object and bpy.context.object.mode != "OBJECT":
-        bpy.ops.object.mode_set(mode="OBJECT")
-    bpy.ops.object.select_all(action="DESELECT")
-    for o in objs:
-        o.select_set(True)
-    bpy.context.view_layer.objects.active = objs[0]
-
-
-def group_weights(obj):
-    """Per vertex: {group name: weight}."""
-    names = {g.index: g.name for g in obj.vertex_groups}
-    return [{names[g.group]: g.weight for g in v.groups} for v in obj.data.vertices]
-
-
-def dominant(weights, among=None):
-    best, bw = None, 0.0
-    for n, w in weights.items():
-        if (among is None or n in among) and w > bw:
-            best, bw = n, w
-    return best
-
-
-def centroid(obj, group):
-    gi = obj.vertex_groups[group].index
-    pts = [obj.matrix_world @ v.co for v in obj.data.vertices if any(g.group == gi and g.weight > 0.5 for g in v.groups)]
-    if not pts:
-        raise RuntimeError(f"no vertices in {group}")
-    return sum(pts, Vector()) / len(pts), pts
-
-
-# --------------------------------------------------------------------------
 # 1. The human
 # --------------------------------------------------------------------------
 
@@ -194,115 +104,25 @@ def make_human(macros):
 
 
 # --------------------------------------------------------------------------
-# 2. Fit
+# 2. Fit: MPFB's game-engine rig, described for common.fit
 # --------------------------------------------------------------------------
 
-def fit(human, rig):
-    """Stretch MPFB's bones onto the game skeleton's bind pose and bake the mesh into that shape."""
-    bones = rig.data.bones
-
-    def head(n):
-        return b2g(rig.matrix_world @ bones[n].head_local)
-
-    def tail(n):
-        return b2g(rig.matrix_world @ bones[n].tail_local)
-
-    def d(a, b):
-        return (b - a).normalized()
-
-    S = RIG["skeleton"]
-    fist = {s: head(f"hand_{s}").lerp(head(f"middle_01_{s}"), 0.6) for s in "lr"}
-    dirs = {
-        "pelvis": (Vector((0, 1, 0)), d(head("pelvis"), head("spine_01"))),
-        "spine": (Vector((0, 1, 0)), d(head("spine_01"), head("spine_03"))),
-        "chest": (Vector((0, 1, 0)), d(head("spine_03"), head("neck_01"))),
-        "head": (Vector((0, 1, 0)), d(head("neck_01"), tail("head"))),
-    }
-    for s, g in (("l", "L"), ("r", "R")):
-        dirs[f"hip{g}"] = (Vector((0, -1, 0)), d(head(f"thigh_{s}"), tail(f"thigh_{s}")))
-        dirs[f"knee{g}"] = (Vector((0, -1, 0)), d(head(f"calf_{s}"), tail(f"calf_{s}")))
-        dirs[f"ankle{g}"] = (Vector((0, -0.06, -0.14)), d(head(f"foot_{s}"), tail(f"foot_{s}")))
-        dirs[f"shoulder{g}"] = (Vector((0, -1, 0)), d(head(f"upperarm_{s}"), tail(f"upperarm_{s}")))
-        dirs[f"elbow{g}"] = (Vector((0, -1, 0)), d(head(f"lowerarm_{s}"), fist[s]))
-    local, pos, rot = bind_pose(dirs)
-
-    # Natural lengths, scaled to the game body, for the parts the game skeleton
-    # does not measure: the head above the neck, the foot, the clavicle.
-    k = S["hipY"] / head("thigh_l").y
-    targets = {}
-
-    def put(bone, h, t):
-        targets[bone] = (h, t)
-
-    r1 = (head("spine_02") - head("spine_01")).length / (head("spine_03") - head("spine_01")).length
-    r3 = (tail("spine_03") - head("spine_03")).length / (head("neck_01") - head("spine_03")).length
-    put("pelvis", pos["pelvis"], pos["spine"])
-    put("spine_01", pos["spine"], pos["spine"].lerp(pos["chest"], r1))
-    put("spine_02", pos["spine"].lerp(pos["chest"], r1), pos["chest"])
-    put("spine_03", pos["chest"], pos["chest"].lerp(pos["head"], r3))
-    up = dirs["head"][1]
-    neck_len = (head("head") - head("neck_01")).length * k
-    head_len = (tail("head") - head("head")).length * k
-    put("neck_01", pos["head"], pos["head"] + up * neck_len)
-    put("head", pos["head"] + up * neck_len, pos["head"] + up * (neck_len + head_len))
-    for s, g in (("l", "L"), ("r", "R")):
-        clav = pos["chest"] + rot["chest"] @ ((head(f"clavicle_{s}") - head("spine_03")) * k)
-        put(f"clavicle_{s}", clav, pos[f"shoulder{g}"])
-        put(f"thigh_{s}", pos[f"hip{g}"], pos[f"knee{g}"])
-        put(f"calf_{s}", pos[f"knee{g}"], pos[f"ankle{g}"])
-        foot_dir = dirs[f"ankle{g}"][1]
-        put(f"foot_{s}", pos[f"ankle{g}"], pos[f"ankle{g}"] + foot_dir * (tail(f"foot_{s}") - head(f"foot_{s}")).length * k)
-        put(f"upperarm_{s}", pos[f"shoulder{g}"], pos[f"elbow{g}"])
-        lower_dir = d(head(f"lowerarm_{s}"), tail(f"lowerarm_{s}"))
-        put(f"lowerarm_{s}", pos[f"elbow{g}"], pos[f"elbow{g}"] + lower_dir * S["forearm"])
-
-    # Free the targeted bones from their parents' stretch, so each one's length
-    # is its own target and not compounded down the chain.
-    select_only(rig)
-    bpy.ops.object.mode_set(mode="EDIT")
-    for name in targets:
-        eb = rig.data.edit_bones[name]
-        eb.use_connect = False
-        eb.inherit_scale = "NONE"
-    bpy.ops.object.mode_set(mode="OBJECT")
-
-    for name, (h, t) in targets.items():
-        eh = bpy.data.objects.new(f"t.{name}.h", None)
-        et = bpy.data.objects.new(f"t.{name}.t", None)
-        for e, p in ((eh, h), (et, t)):
-            bpy.context.collection.objects.link(e)
-            e.location = g2b(p)
-        pb = rig.pose.bones[name]
-        c = pb.constraints.new("COPY_LOCATION")
-        c.target = eh
-        c = pb.constraints.new("STRETCH_TO")
-        c.target = et
-        c.volume = "NO_VOLUME"
-        c.rest_length = rig.data.bones[name].length
-
-    # A relaxed, half-closed hand rather than MPFB's flat open palm.
-    curl = float(os.environ.get("PLAYER_CURL", "1.0"))
-    for s in "lr":
-        for finger, amount in (("index", 0.8), ("middle", 0.9), ("ring", 1.0), ("pinky", 1.05), ("thumb", 0.35)):
-            for kk in (1, 2, 3):
-                pb = rig.pose.bones[f"{finger}_0{kk}_{s}"]
-                pb.rotation_mode = "XYZ"
-                pb.rotation_euler = (0, 0, curl * amount * (0.7 if kk == 1 else 1.0))
-    bpy.context.view_layer.update()
-
-    select_only(human)
-    arm_mod = next(md for md in human.modifiers if md.type == "ARMATURE")
-    bpy.ops.object.modifier_move_to_index(modifier=arm_mod.name, index=0)
-    bpy.ops.object.modifier_apply(modifier=arm_mod.name)
-
-    worst = 0.0
-    for name, (h, t) in targets.items():
-        got = b2g(rig.matrix_world @ rig.pose.bones[name].head)
-        worst = max(worst, (got - h).length)
-
-    # Bone positions after the fit, in Blender space, for the seams.
-    posed = {pb.name: (rig.matrix_world @ pb.head, rig.matrix_world @ pb.tail) for pb in rig.pose.bones}
-    return local, pos, worst, posed
+MPFB_RIG = {
+    "pelvis": "pelvis",
+    "spine": ["spine_01", "spine_02"],
+    "chest": ["spine_03"],
+    "neck": "neck_01",
+    "head": "head",
+    "clavicle": "clavicle_{s}", "thigh": "thigh_{s}", "calf": "calf_{s}", "foot": "foot_{s}", "toe": "ball_{s}",
+    "upperarm": "upperarm_{s}", "lowerarm": "lowerarm_{s}", "hand": "hand_{s}", "knuckle": "middle_01_{s}",
+    "sides": ("l", "r"),
+    "fingers": [
+        (f"{finger}_0{k}_{{s}}", amount * (0.7 if k == 1 else 1.0))
+        for finger, amount in (("index", 0.8), ("middle", 0.9), ("ring", 1.0), ("pinky", 1.05), ("thumb", 0.35))
+        for k in (1, 2, 3)
+    ],
+    "curl_axis": "Z",
+}
 
 
 # --------------------------------------------------------------------------
@@ -706,64 +526,10 @@ def beard_styles(human, L):
 # 7. Weights, armature, export
 # --------------------------------------------------------------------------
 
-def merge_weights(human):
-    """Collapse MPFB's bones' weights into the game's joints."""
-    me = human.data
-    gname = {g.index: g.name for g in human.vertex_groups}
-    per_vertex = []
-    for v in me.vertices:
-        acc = {}
-        for g in v.groups:
-            target = WEIGHT_MAP.get(gname[g.group])
-            if target is None and gname[g.group] in ("helper-l-eye", "helper-r-eye"):
-                target = "head"
-            if target and g.weight > 0:
-                acc[target] = acc.get(target, 0.0) + g.weight
-        per_vertex.append(acc)
-    for g in list(human.vertex_groups):
-        human.vertex_groups.remove(g)
-    groups = {n: human.vertex_groups.new(name=n) for n in SKINNED}
-    unweighted = 0
-    for i, acc in enumerate(per_vertex):
-        if not acc:
-            unweighted += 1
-            continue
-        top = sorted(acc.items(), key=lambda kv: -kv[1])[:4]
-        total = sum(w for _, w in top)
-        for n, w in top:
-            groups[n].add([i], w / total, "REPLACE")
-    if unweighted:
-        raise RuntimeError(f"{unweighted} vertices have no weight on any game joint")
-
-
-def game_armature(pos):
-    """An armature with one bone per skinned game joint, at the bind pivots, to carry the skin."""
-    arm = bpy.data.armatures.new("rig")
-    obj = bpy.data.objects.new("rig", arm)
-    bpy.context.collection.objects.link(obj)
-    select_only(obj)
-    bpy.ops.object.mode_set(mode="EDIT")
-    for name in ORDER:
-        if name not in SKINNED:
-            continue
-        b = arm.edit_bones.new(name)
-        b.head = g2b(pos[name])
-        child = next((c["name"] for c in RIG["joints"] if c["parent"] == name and c["name"] in pos), None)
-        tip = pos[child] if child else pos[name] + Vector((0, 0.1, 0))
-        if (tip - pos[name]).length < 1e-3:
-            tip = pos[name] + Vector((0, 0.1, 0))
-        b.tail = g2b(tip)
-        parent = JOINTS[name]["parent"]
-        if parent:
-            b.parent = arm.edit_bones[parent]
-    bpy.ops.object.mode_set(mode="OBJECT")
-    return obj
-
-
 def build(entry):
     reset()
     human, rig = make_human(entry["macros"])
-    local, pos, worst, posed = fit(human, rig)
+    local, pos, worst, posed = fit(human, rig, MPFB_RIG)
     if worst > 0.002:
         raise RuntimeError(f"{entry['name']}: bones missed their pivots by {worst * 1000:.1f} mm")
     L = landmarks(human)
@@ -777,7 +543,18 @@ def build(entry):
     decimate(human)
     seams(human, posed, L)
     accessories = hair_styles(human, L) + beard_styles(human, L)
-    merge_weights(human)
+    bones = {b.name for b in rig.data.bones}
+
+    def joint_of(group):
+        if group in WEIGHT_MAP:
+            return WEIGHT_MAP[group]
+        if group in ("helper-l-eye", "helper-r-eye"):
+            return "head"
+        # A rig bone with no game joint is a mistake in WEIGHT_MAP; anything
+        # else (MPFB's region groups: lips, scalp, ...) carries no deformation.
+        return False if group in bones else None
+
+    merge_weights(human, joint_of)
 
     keep = {human.name} | {a.name for a in accessories}
     for o in list(bpy.data.objects):
@@ -788,34 +565,13 @@ def build(entry):
     select_only(human)
     bpy.ops.object.shade_smooth()
 
-    arm = game_armature(pos)
     human.name = entry["name"]
-    for o in [human] + accessories:
-        o.parent = arm
-        mod = o.modifiers.new("Armature", "ARMATURE")
-        mod.object = arm
-
-    # Into game space: a half turn about Blender Z, so glTF's Y-up conversion
-    # lands the body facing -Z with the player's right at +X.
-    arm.rotation_euler = (0, 0, math.pi)
-    select_only(arm, human, *accessories)
-    bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
-
-    arm["bind"] = json.dumps({n: [q.x, q.y, q.z, q.w] for n, q in local.items() if n in SKINNED})
-    arm["build"] = entry["name"]
-
-    os.makedirs(OUT, exist_ok=True)
     path = os.path.join(OUT, f"{entry['name']}.glb")
-    select_only(arm, human, *accessories)
-    bpy.ops.export_scene.gltf(
-        filepath=path, export_format="GLB", use_selection=True, export_skins=True,
-        export_animations=False, export_extras=True, export_yup=True, export_morph=False,
-        export_materials="EXPORT", export_image_format="NONE", export_texcoords=False,
-    )
+    export(entry["name"], [human] + accessories, pos, local, path)
     tris = sum(len(p.vertices) - 2 for p in human.data.polygons)
     extra = sum(sum(len(p.vertices) - 2 for p in a.data.polygons) for a in accessories)
     print(f"PLAYER {entry['name']}: {tris} body tris + {extra} hair, {os.path.getsize(path) // 1024} KB")
-    return {"name": entry["name"], "file": f"{entry['name']}.glb", "heritage": entry["heritage"],
+    return {"name": entry["name"], "file": f"{entry['name']}.glb", "source": "mpfb", "heritage": entry["heritage"],
             "physique": entry["physique"], "skin": entry["skin"]}
 
 
@@ -823,9 +579,12 @@ def main():
     only = os.environ.get("PLAYER_ONLY")
     done = [build(b) for b in BUILDS if not only or b["name"] == only]
     if not only:
-        with open(os.path.join(OUT, "manifest.json"), "w") as f:
+        # The manifest also lists bodies other builds made (Rocketbox); keep them.
+        path = os.path.join(OUT, "manifest.json")
+        others = [b for b in json.load(open(path))["builds"] if b.get("source", "mpfb") != "mpfb"] if os.path.exists(path) else []
+        with open(path, "w") as f:
             json.dump({
-                "builds": done,
+                "builds": done + others,
                 "hairStyles": [h["name"] for h in HAIR_STYLES],
                 "beardStyles": [b["name"] for b in BEARD_STYLES],
             }, f, indent=2)
