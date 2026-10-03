@@ -24,10 +24,18 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { JOINTS, type JointName } from "./joints";
 
-/** Material slots the build script writes, painted per player. */
-export const BODY_SLOTS = ["skin", "shirt", "trousers", "sleeve", "hand", "boot", "lips", "brow", "eye", "iris"] as const;
+/**
+ * Material slots the build scripts write. Flat slots are painted per player;
+ * textured slots ("face", "bare" skin, "hair-cards" — Rocketbox avatars'
+ * photographic head, skin and hair) keep the map that came in the file, and
+ * the kit slots around them are painted as for any body. "hand" can be
+ * either: flat on an MPFB body, textured on an avatar.
+ */
+export const BODY_SLOTS = [
+  "skin", "shirt", "trousers", "sleeve", "hand", "boot", "lips", "brow", "eye", "iris", "face", "bare", "hair-cards",
+] as const;
 export type BodySlot = (typeof BODY_SLOTS)[number];
-export type BodyColours = Record<BodySlot | "hair" | "beard", number>;
+export type BodyColours = Record<Exclude<BodySlot, "face" | "bare" | "hair-cards"> | "hair" | "beard", number>;
 
 /** The skull, measured off the mesh in the head joint's frame (unscaled), so headgear fits it. */
 export interface HeadFit {
@@ -43,6 +51,8 @@ export interface BodyTemplate {
   geometry: THREE.BufferGeometry;
   /** Material slot per geometry group, in group order. */
   slots: BodySlot[];
+  /** The texture a slot keeps from the file, where it has one. */
+  maps: Map<BodySlot, THREE.Texture>;
   /** Hair and facial-hair shells, by style name. */
   hair: Map<string, THREE.BufferGeometry>;
   beard: Map<string, THREE.BufferGeometry>;
@@ -55,7 +65,7 @@ export interface BodyTemplate {
 export type BodyLibrary = Map<string, BodyTemplate>;
 
 export interface Manifest {
-  builds: { name: string; file: string; heritage: string; physique: string; skin: string }[];
+  builds: { name: string; file: string; source: "mpfb" | "rocketbox"; skin: string; heritage?: string; physique?: string; avatar?: string }[];
   hairStyles: string[];
   beardStyles: string[];
 }
@@ -134,9 +144,17 @@ export function templateFrom(scene: THREE.Object3D, name: string): BodyTemplate 
     }
   }
   const slots = parts.map((m) => (m.material as THREE.Material).name as BodySlot);
+  const maps = new Map<BodySlot, THREE.Texture>();
+  parts.forEach((m, i) => {
+    const map = (m.material as THREE.MeshStandardMaterial).map;
+    if (map) maps.set(slots[i], map);
+  });
+  for (const s of ["face", "bare", "hair-cards"] as const) {
+    if (slots.includes(s) && !maps.has(s)) throw new Error(`body ${name}: textured slot "${s}" has no texture`);
+  }
   const geometry = mergeGeometries(parts.map((m) => m.geometry), true);
   if (!geometry) throw new Error(`body ${name}: its parts could not be merged`);
-  return { name, geometry, slots, hair, beard, joints, bind };
+  return { name, geometry, slots, maps, hair, beard, joints, bind };
 }
 
 /** The joints a body binds to, as the rig provides them. */
@@ -181,7 +199,18 @@ export function attachBody(
 
   const c = look.colours;
   const mats = body.slots.map((slot) => {
-    const m = material(slot, c[slot], slot === "eye" || slot === "iris" ? 0.3 : 0.85);
+    const map = body.maps.get(slot);
+    const m = map
+      ? Object.assign(material(slot, 0xffffff, 0.8), { map })
+      : material(slot, c[slot as keyof BodyColours], slot === "eye" || slot === "iris" ? 0.3 : 0.85);
+    // A photographic face already carries its own shading; hard bands on top
+    // of it cut it into dark patches. Textured skin takes the soft ramp.
+    if (map) m.userData.celRamp = "soft";
+    if (slot === "hair-cards") {
+      // Strands and lashes are cut out of cards by their alpha.
+      m.alphaTest = 0.45;
+      m.side = THREE.DoubleSide;
+    }
     if (slot === "hand" && look.hideHands) m.visible = false;
     return m;
   });
@@ -264,5 +293,10 @@ function measureHead(mesh: THREE.SkinnedMesh, body: BodyTemplate, headJoint: THR
   const skullBottom = crown - (crown - low) * 0.55;
   const skull = new THREE.Box3().setFromPoints(pts.filter((p) => p.y >= skullBottom));
   const centre = skull.getCenter(new THREE.Vector3());
-  return { centre, crown, radius: (skull.max.x - skull.min.x) / 2 };
+  const radius = (skull.max.x - skull.min.x) / 2;
+  // The skull is a sphere sitting under the crown. Taking its centre from the
+  // middle of the head-weighted span instead puts it too high on a body whose
+  // neck is weighted to the head too, and every cap floats.
+  centre.y = crown - radius;
+  return { centre, crown, radius };
 }

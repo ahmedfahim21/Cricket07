@@ -14,7 +14,7 @@ const LOOK: Appearance = {
 
 const DIR = join(__dirname, "../../../public/models/players");
 const manifest = JSON.parse(readFileSync(join(DIR, "manifest.json"), "utf8")) as {
-  builds: { name: string; file: string; skin: string }[];
+  builds: { name: string; file: string; skin: string; source: "mpfb" | "rocketbox"; avatar?: string }[];
   hairStyles: string[];
   beardStyles: string[];
 };
@@ -22,7 +22,13 @@ const manifest = JSON.parse(readFileSync(join(DIR, "manifest.json"), "utf8")) as
 async function load(file: string, name: string): Promise<BodyTemplate> {
   const buf = readFileSync(join(DIR, file));
   const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
-  const gltf = await new GLTFLoader().parseAsync(ab, "");
+  // Node cannot decode images; the tests need geometry and weights, so an
+  // empty texture stands in for any map in the file.
+  const loader = new GLTFLoader().register(() => ({
+    name: "test-no-images",
+    loadTexture: () => Promise.resolve(new THREE.Texture()),
+  }));
+  const gltf = await loader.parseAsync(ab, "");
   return templateFrom(gltf.scene, name);
 }
 
@@ -60,19 +66,21 @@ function rigidTo(mesh: THREE.SkinnedMesh, body: BodyTemplate, joint: string): nu
   return out;
 }
 
-describe.each(manifest.builds)("body $name", ({ name, file }) => {
+describe.each(manifest.builds)("body $name", ({ name, file, source, avatar }) => {
   let body: BodyTemplate;
+  // How to dress it: a built body by building blocks, an avatar as itself.
+  const look = (source === "rocketbox" ? { avatar, cap: false } : LOOK) as Appearance;
   beforeAll(async () => {
     body = await load(file, name);
   });
 
-  it("carries every hair and facial-hair style the manifest lists", () => {
+  it.runIf(source === "mpfb")("carries every hair and facial-hair style the manifest lists", () => {
     for (const h of manifest.hairStyles) if (h !== "bald") expect(body.hair.has(h), h).toBe(true);
     for (const b of manifest.beardStyles) if (b !== "none") expect(body.beard.has(b), b).toBe(true);
   });
 
-  it("moves hair and beard rigidly with the head", () => {
-    const rig = makePlayer({ role: "fielder", body, appearance: LOOK });
+  it.runIf(source === "mpfb")("moves hair and beard rigidly with the head", () => {
+    const rig = makePlayer({ role: "fielder", body, appearance: look });
     const pieces = rig.root.children.filter((o) => /^(hair|beard)-/.test(o.name)) as THREE.SkinnedMesh[];
     expect(pieces.map((p) => p.name).sort()).toEqual(["beard-full", "hair-short"]);
     rig.head.rotation.set(0.4, 0.6, 0);
@@ -97,11 +105,18 @@ describe.each(manifest.builds)("body $name", ({ name, file }) => {
     expect(body.joints.length).toBe(JOINTS.length - 2);
     for (const j of body.joints) expect(JOINTS).toContain(j);
     expect(body.joints).not.toContain("handL");
-    expect(body.slots).toEqual(expect.arrayContaining(["skin", "shirt", "trousers", "sleeve", "hand", "boot", "lips", "brow", "eye", "iris"]));
+    // Kit slots on every body, so any side's colours apply; the face is
+    // painted slots on a built body and a texture on an avatar.
+    expect(body.slots).toEqual(expect.arrayContaining(["shirt", "trousers", "hand", "boot"]));
+    if (source === "mpfb") expect(body.slots).toEqual(expect.arrayContaining(["skin", "sleeve", "lips", "brow", "eye", "iris"]));
+    else {
+      expect(body.slots).toContain("face");
+      for (const s of ["face", "hand"] as const) expect(body.maps.has(s), s).toBe(true);
+    }
   });
 
   it("is undeformed in its bind pose, so the binding is exact", () => {
-    const rig = makePlayer({ role: "fielder", body, appearance: LOOK });
+    const rig = makePlayer({ role: "fielder", body, appearance: look });
     const mesh = bodyOf(rig);
     for (const j of JOINTS) rig[j].quaternion.copy(body.bind.get(j) ?? new THREE.Quaternion());
     rig.root.updateMatrixWorld(true);
@@ -116,7 +131,7 @@ describe.each(manifest.builds)("body $name", ({ name, file }) => {
   });
 
   it("puts the fist on the hand joint, where the bat and the ball are held", () => {
-    const rig = makePlayer({ role: "fielder", body, appearance: LOOK });
+    const rig = makePlayer({ role: "fielder", body, appearance: look });
     const mesh = bodyOf(rig);
     const got = skinned(mesh);
     for (const side of ["L", "R"] as const) {
@@ -134,7 +149,7 @@ describe.each(manifest.builds)("body $name", ({ name, file }) => {
   });
 
   it("stands on the ground in the rest pose", () => {
-    const rig = makePlayer({ role: "fielder", body, appearance: LOOK });
+    const rig = makePlayer({ role: "fielder", body, appearance: look });
     const mesh = bodyOf(rig);
     const got = skinned(mesh);
     for (const side of ["L", "R"] as const) {

@@ -30,7 +30,7 @@ import { AssetMaterialLib, Part, mergeByMaterial, stdMat } from "./shared";
 import { makeBat } from "./equipment";
 import { JOINTS, type JointName } from "./joints";
 import { attachBody, type BodyTemplate, type HeadFit } from "./bodies";
-import { bodyColours, type Appearance } from "../roster/appearance";
+import { bodyColours, isAvatar, type Appearance } from "../roster/appearance";
 
 export { JOINTS, type JointName };
 
@@ -356,12 +356,14 @@ export function dressPlayer(rig: PlayerRig, body: BodyTemplate, appearance: Appe
     longSleeves: gloved || umpire,
   });
   const capped = gloved || umpire || appearance.cap;
+  const avatar = isAvatar(appearance);
   const { head, hairLift } = attachBody(rig, body, {
     colours,
     // Under a helmet, cap or hat only the hair below the brim shows; a style
-    // that would stand proud of it is worn flattened, as the short one.
-    hair: capped && (appearance.hair === "curly" || appearance.hair === "neat") ? "short" : appearance.hair,
-    beard: appearance.facialHair,
+    // that would stand proud of it is worn flattened, as the short one. An
+    // avatar's hair is its own and part of its head.
+    hair: avatar ? "bald" : capped && (appearance.hair === "curly" || appearance.hair === "neat") ? "short" : appearance.hair,
+    beard: avatar ? "none" : appearance.facialHair,
     hideHands: gloved,
   });
   headgear(rig, head, hairLift, appearance.cap);

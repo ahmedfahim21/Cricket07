@@ -62,7 +62,44 @@ export const EYE_COLOURS = {
 } as const;
 export type EyeColour = keyof typeof EYE_COLOURS;
 
-export interface Appearance {
+/**
+ * Microsoft Rocketbox avatars (MIT) built into bodies by
+ * tools/players/rocketbox. Their faces, hair and skin are photographic
+ * textures, so an avatar player is chosen rather than described.
+ */
+export const AVATARS = [
+  "Male_Adult_02",
+  "Male_Adult_03",
+  "Male_Adult_04",
+  "Male_Adult_05",
+  "Male_Adult_06",
+  "Male_Adult_07",
+  "Male_Adult_08",
+  "Male_Adult_09",
+  "Male_Adult_10",
+  "Male_Adult_11",
+  "Male_Adult_12",
+  "Male_Adult_13",
+  "Male_Adult_14",
+  "Male_Adult_16",
+  "Male_Adult_17",
+  "Male_Adult_20",
+  "Business_Male_02",
+  "Business_Male_05",
+  "Business_Male_06",
+  "Sports_Male_03",
+] as const;
+export type Avatar = (typeof AVATARS)[number];
+
+/** A player wearing a Rocketbox avatar: the face is the avatar's; only the kit and cap are ours. */
+export interface AvatarAppearance {
+  avatar: Avatar;
+  /** Wears a cap in the field. Batsmen always wear a helmet and umpires a hat. */
+  cap: boolean;
+}
+
+/** A player made from building blocks on an MPFB body. */
+export interface BuiltAppearance {
   heritage: Heritage;
   physique: Physique;
   skin: SkinTone;
@@ -74,8 +111,20 @@ export interface Appearance {
   cap: boolean;
 }
 
+export type Appearance = AvatarAppearance | BuiltAppearance;
+
+export function isAvatar(a: Appearance): a is AvatarAppearance {
+  return "avatar" in a;
+}
+
+/** The body file name for an avatar: `rb-male-adult-08`. */
+export function avatarBuild(avatar: string): string {
+  return `rb-${avatar.toLowerCase().replace(/_/g, "-")}`;
+}
+
 /** The body file a player wears. */
 export function buildFor(a: Appearance): string {
+  if (isAvatar(a)) return avatarBuild(a.avatar);
   if (a.physique === "veteran" && !VETERAN_HERITAGES.includes(a.heritage)) {
     throw new Error(`no veteran build for heritage "${a.heritage}"`);
   }
@@ -96,8 +145,17 @@ function mix(a: number, b: number, t: number): number {
   return m(16) | m(8) | m(0);
 }
 
-/** Every painted surface of a player. */
+/** Every painted surface of a player. An avatar's skin, hair and face are textures; only the kit is painted. */
 export function bodyColours(a: Appearance, kit: Kit) {
+  if (isAvatar(a)) {
+    const unused = 0xff00ff; // slots an avatar does not have
+    return {
+      skin: unused, hand: unused, lips: unused, brow: unused, eye: unused, iris: unused, hair: unused, beard: unused,
+      shirt: kit.shirt, trousers: kit.trousers, boot: kit.boot,
+      // An avatar's bare forearms are textured skin; its sleeves are cloth.
+      sleeve: kit.shirt,
+    };
+  }
   const skin = SKIN_TONES[a.skin];
   const hair = HAIR_COLOURS[a.hairColour];
   return {
@@ -121,6 +179,7 @@ export function bodyColours(a: Appearance, kit: Kit) {
 
 /** True if every field names something that exists. Rosters are checked with this in tests. */
 export function validAppearance(a: Appearance): string[] {
+  if (isAvatar(a)) return AVATARS.includes(a.avatar) ? [] : [`avatar "${a.avatar}"`];
   const problems: string[] = [];
   if (!HERITAGES.includes(a.heritage)) problems.push(`heritage "${a.heritage}"`);
   if (!PHYSIQUES.includes(a.physique)) problems.push(`physique "${a.physique}"`);
