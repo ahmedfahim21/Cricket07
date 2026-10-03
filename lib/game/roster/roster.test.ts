@@ -4,17 +4,20 @@ import { describe, expect, it } from "vitest";
 import { CHALLENGES } from "../match/challenges";
 import { BOWLERS } from "../match/player-bowling";
 import { fieldFor } from "../match/fielding";
-import { FACIAL_HAIR, HAIR_STYLES, HERITAGES, PHYSIQUES, VETERAN_HERITAGES, bodyColours, buildFor, validAppearance } from "./appearance";
+import { AVATARS, FACIAL_HAIR, HAIR_STYLES, HERITAGES, PHYSIQUES, VETERAN_HERITAGES, avatarBuild, bodyColours, buildFor, validAppearance } from "./appearance";
 import { FIELDING, HOME, UMPIRE, VISITORS, bowlerFor, fieldersFor, playerNamed } from "./squads";
 
 const ROOT = join(__dirname, "../../..");
 const manifest = JSON.parse(readFileSync(join(ROOT, "public/models/players/manifest.json"), "utf8")) as {
-  builds: { name: string; heritage: string; physique: string }[];
+  builds: { name: string; source: "mpfb" | "rocketbox"; avatar?: string }[];
   hairStyles: string[];
   beardStyles: string[];
 };
 const spec = JSON.parse(readFileSync(join(ROOT, "tools/players/builds.json"), "utf8")) as {
   builds: { name: string }[];
+};
+const avatars = JSON.parse(readFileSync(join(ROOT, "tools/players/rocketbox/avatars.json"), "utf8")) as {
+  avatars: { id: string }[];
 };
 const everyone = [...HOME.players, ...VISITORS.players, ...FIELDING.players, UMPIRE];
 
@@ -22,8 +25,14 @@ describe("the building blocks", () => {
   it("are exactly what the Blender build makes", () => {
     expect([...HAIR_STYLES]).toEqual(manifest.hairStyles);
     expect([...FACIAL_HAIR]).toEqual(manifest.beardStyles);
-    const built = new Set(manifest.builds.map((b) => b.name));
+    const built = new Set(manifest.builds.filter((b) => b.source === "mpfb").map((b) => b.name));
     expect(built).toEqual(new Set(spec.builds.map((b) => b.name)));
+    // Every Rocketbox avatar the game knows is built, and every one built is known.
+    const ids = avatars.avatars.map((a) => a.id);
+    expect([...AVATARS].sort()).toEqual([...ids].sort());
+    const rb = manifest.builds.filter((b) => b.source === "rocketbox");
+    expect(rb.map((b) => b.avatar).sort()).toEqual([...ids].sort());
+    for (const b of rb) expect(b.name).toBe(avatarBuild(b.avatar!));
     for (const h of HERITAGES) {
       for (const p of PHYSIQUES) {
         const exists = p !== "veteran" || VETERAN_HERITAGES.includes(h);
@@ -50,6 +59,16 @@ describe("the squads", () => {
     for (const p of everyone) {
       expect(validAppearance(p.appearance), p.name).toEqual([]);
       expect(manifest.builds.some((b) => b.name === buildFor(p.appearance)), p.name).toBe(true);
+    }
+  });
+
+  it("never put the same face on the field twice", () => {
+    // Everyone who can be on the field at once: the fielding side, the
+    // umpire, and either batting side (they never play each other).
+    const face = (p: { appearance: object }) => JSON.stringify(p.appearance).replace(/,"cap":(true|false)/, "");
+    for (const batting of [HOME, VISITORS]) {
+      const faces = [...FIELDING.players, UMPIRE, ...batting.players].map(face);
+      expect(new Set(faces).size, batting.name).toBe(faces.length);
     }
   });
 
