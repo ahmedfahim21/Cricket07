@@ -47,11 +47,6 @@ try {
       let celebrationRuns = null;
       let immediateCelebration = false;
       let umpireCutSeen = false;
-      // The ball line lives for the whole delivery and is wiped behind the fade,
-      // so its extent has to be sampled while the ball is still in play.
-      const trail = { flight: 0, pitched: 0, struck: 0 };
-      let markAt = null;
-      let markError = null;
       if (aim) key(aim);
       if (move) key(move);
       for (let frame = 0; frame < 2400; frame++) {
@@ -63,11 +58,6 @@ try {
           key("KeyS"); pressed = true;
         }
         g.update(1 / 60);
-        for (const leg of ["flight", "pitched", "struck"]) trail[leg] = Math.max(trail[leg], g.trail.count(leg));
-        if (!markAt && g.ballLine.group.getObjectByName("pitch-mark").visible) {
-          markAt = g.ballLine.group.getObjectByName("pitch-mark").position.clone();
-          markError = g.world.lastBounce ? Math.hypot(markAt.x - g.world.lastBounce.position.x, markAt.z - g.world.lastBounce.position.z) : null;
-        }
         if (g.live.boundaryRuns !== null) {
           if (celebrationRuns === null) {
             celebrationRuns = g.live.boundaryRuns;
@@ -89,7 +79,6 @@ try {
       if (aim) key(aim, false);
       if (move) key(move, false);
       return { band, meterError, style: g.style, score: g.match.runs, wickets: g.match.wickets, event: g.lastEvent, bounceError, markerSeen, markerStable, frozen, releasePosition: releasePosition?.toArray(), timeline: [...g.match.timeline], celebrationRuns, immediateCelebration, umpireCutSeen, celebrationCleared: g.live.boundaryRuns === null,
-        trail, markError, trailCleared: g.trail.count("flight") === 0 && g.trail.count("struck") === 0,
         bowlers: structuredClone(g.match.bowlers), partnership: { ...g.match.partnership }, thisOver: [...g.match.thisOver],
         extras: g.match.extras, overs: g.match.overs, ballsThisOver: g.match.ballsThisOver };
     };
@@ -143,12 +132,6 @@ try {
     for (const delivery of level.deliveries) {
       assert.ok(delivery.markerSeen && delivery.markerStable && delivery.frozen);
       if (delivery.bounceError !== null) assert.ok(delivery.bounceError < 0.15);
-      // The ball line must be drawn out of the hand, kinked at the pitch of the
-      // ball, continued off the bat, and gone again by the next delivery.
-      assert.ok(delivery.trail.flight >= 2, "no line drawn out of the hand");
-      assert.ok(delivery.trailCleared, "the line must not survive into the next ball");
-      if (delivery.markError !== null) assert.ok(delivery.markError < 1e-6, "pitch mark must sit on the recorded bounce");
-      if (delivery.band && delivery.band !== "missed") assert.ok(delivery.trail.struck >= 2, "no line drawn off the bat");
       if (delivery.celebrationRuns) assert.ok(delivery.immediateCelebration && delivery.umpireCutSeen && delivery.celebrationCleared, "boundary celebration must start on crossing, cut to umpire, and reset");
     }
   }

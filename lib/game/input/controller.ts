@@ -33,7 +33,6 @@ export class BattingController {
   private disposed = false;
   private restartPressed = false;
   private cameraPressed = false;
-  private ballLinePressed = false;
   private bowlingLockPressed = false;
 
   constructor(bindings: Bindings = DEFAULT_BINDINGS) {
@@ -75,7 +74,6 @@ export class BattingController {
       this.restartPressed = true;
       this.bowlingLockPressed = true;
     } else if (b.camera.includes(e.code)) this.cameraPressed = true;
-    else if (b.ballLine.includes(e.code)) this.ballLinePressed = true;
   };
 
   /**
@@ -93,7 +91,6 @@ export class BattingController {
     this.pendingShot = null;
     this.restartPressed = false;
     this.cameraPressed = false;
-    this.ballLinePressed = false;
     this.bowlingLockPressed = false;
   };
 
@@ -177,12 +174,6 @@ export class BattingController {
   consumeCameraToggle(): boolean {
     const was = this.cameraPressed;
     this.cameraPressed = false;
-    return was;
-  }
-
-  consumeBallLineToggle(): boolean {
-    const was = this.ballLinePressed;
-    this.ballLinePressed = false;
     return was;
   }
 

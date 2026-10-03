@@ -129,12 +129,10 @@ describe("Cricket 07 batting controls", () => {
     expect(controller.consumeRestart()).toBe(false);
   });
 
-  it("toggles the camera and the ball line once per press", () => {
-    down("KeyC", "KeyL");
+  it("toggles the camera once per press", () => {
+    down("KeyC");
     expect(controller.consumeCameraToggle()).toBe(true);
     expect(controller.consumeCameraToggle()).toBe(false);
-    expect(controller.consumeBallLineToggle()).toBe(true);
-    expect(controller.consumeBallLineToggle()).toBe(false);
   });
 
   it("clears everything on blur, so no key is left stuck down", () => {

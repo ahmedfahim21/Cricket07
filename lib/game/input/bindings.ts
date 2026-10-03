@@ -49,9 +49,9 @@
  * KEYS THAT ARE OURS, NOT THE ORIGINAL'S
  * ---------------------------------------------------------------------------
  * Space / Enter bowl the next ball and lock a delivery, which is the original's
- * confirm. R, C and L are additions on keys the original leaves free: a restart
- * alias, the camera, and the ball line. They are listed apart in the help so it
- * stays clear which half is authentic.
+ * confirm. R and C are additions on keys the original leaves free: a restart
+ * alias and the camera. They are listed apart in the help so it stays clear
+ * which half is authentic.
  *
  * Everything here is data. `controller.ts` turns key state into the same
  * `BattingIntent` shape a gamepad will later produce, so adding pad support
@@ -83,8 +83,6 @@ export interface Bindings {
   /** Start the next delivery; while bowling, lock line, length and pace. */
   bowl: string[];
   camera: string[];
-  /** Show or hide the ball's trail. */
-  ballLine: string[];
 }
 
 export const DEFAULT_BINDINGS: Bindings = {
@@ -99,7 +97,6 @@ export const DEFAULT_BINDINGS: Bindings = {
   loft: ["ShiftLeft", "ShiftRight"],
   bowl: ["Space", "Enter", "NumpadEnter", "KeyR"],
   camera: ["KeyC"],
-  ballLine: ["KeyL"],
 };
 
 /** What the batting logic consumes. A gamepad will produce this too. */
@@ -167,5 +164,4 @@ export const BOWLING_CONTROL_HELP = [
 export const EXTRA_CONTROL_HELP = [
   { keys: "Space / Enter", action: "Bowl the next ball" },
   { keys: "C", action: "Batting / TV camera" },
-  { keys: "L", action: "Ball line on / off" },
 ];

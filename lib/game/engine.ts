@@ -63,8 +63,6 @@ import { umpireSignalPose } from "./anim/umpire";
 import { BOUNDARY_CUT_TIME, BOUNDARY_HOLD_TIME, UMPIRE_SIGNAL_START, type BoundaryRuns } from "./presentation/boundary";
 import { dismissedBatsman, momentShot, nextReaction, reactionTime, WICKET_HOLD_TIME, type MatchMoment, type MomentShot } from "./presentation/moments";
 import { ReactionScene } from "./presentation/reactions";
-import { BallTrail } from "./presentation/trail";
-import { createBallLine, type BallLineView } from "./presentation/ballLine";
 import { BOWLERS, DEFAULT_BOWLING_AIM, bowlingStatus, isBowlingWide, lockPlayerDelivery, moveBowlingAim, playerDelivery, shouldChangeBowler, type BowlingAim } from "./match/player-bowling";
 import { decideAiShot, type AiDecision } from "./match/ai-batsman";
 import { NEUTRAL_INTENT } from "./input/bindings";
@@ -273,15 +271,6 @@ export class Game {
   private bowler!: BowlerAnimator;
   private previewRig!: PlayerRig;
   private marker!: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
-  /** The ball's own line: sampled path plus the scuff where it pitched. */
-  private trail = new BallTrail();
-  private ballLine!: BallLineView;
-  /** Player toggle; the line is on by default because it is the point of it. */
-  private ballLineOn = true;
-  /** Set on the frame the pitch of the ball is first seen, to open the next leg. */
-  private trailPitched = false;
-  /** Set once a fielder has the ball: the line stops there, throws excluded. */
-  private trailClosed = false;
   private markerPoint: THREE.Vector3 | null = null;
   private markerLocked = false;
   private markerFade = 0;
@@ -512,10 +501,6 @@ export class Game {
     this.marker.rotation.x = -Math.PI / 2;
     this.marker.visible = false;
     this.scene.add(this.marker);
-    // After celify, so the trail keeps its own flat broadcast colour instead of
-    // being converted to a banded toon material like the rest of the scene.
-    this.ballLine = createBallLine();
-    this.scene.add(this.ballLine.group);
     this.pipeline = createRenderPipeline(this.renderer, this.scene, this.camera, sun);
   }
 
@@ -554,12 +539,6 @@ export class Game {
     this.markerPoint = null;
     this.markerLocked = false;
     this.markerFade = 0;
-    // The line survives the whole delivery and the replay hold, and is cleared
-    // here — behind the fade to black — so it never blinks out on screen.
-    this.trail.clear();
-    this.trailPitched = false;
-    this.trailClosed = false;
-    this.ballLine?.markPitch(null);
     this.bounceZ = null;
     this.live.timingError = null;
     this.aiDecision = null;
@@ -691,13 +670,6 @@ export class Game {
     if (this.mode === "bowling" && !this.markerLocked) this.lockBowlingAim();
     const d = buildDelivery({ ...this.plan, releaseX: hand.x, releaseHeight: hand.y, releaseZ: hand.z });
     this.world.release(d);
-    // Start the line at the FITTED release point rather than at the hand: that
-    // is where the ball actually is on this frame, so the line begins on it.
-    this.trail.clear();
-    this.trailPitched = false;
-    this.trailClosed = false;
-    this.ballLine.markPitch(null);
-    this.trail.open("flight", { x: d.position.x, y: d.position.y, z: d.position.z });
     this.live.deliverySpeed = Math.hypot(d.velocity.x, d.velocity.y, d.velocity.z);
     // Read actual release for batting assistance; the already-locked marker stays fixed.
     this.bounceZ = predictBounce({ ...d, shine: 1 }, this.world)?.position.z ?? null;
@@ -773,7 +745,6 @@ export class Game {
 
     if (this.input.consumeRestart() && this.phase === "idle") this.bowl();
     if (this.input.consumeCameraToggle()) this.toggleCamera();
-    if (this.input.consumeBallLineToggle()) this.toggleBallLine();
 
     const ball = this.world.ball;
     this.prevBall.set(ball.position.x, ball.position.y, ball.position.z);
@@ -809,7 +780,6 @@ export class Game {
     }
     this.updatePossession();
     this.updateMarker(dt);
-    this.updateBallLine();
     this.syncVisuals();
     // Anticipation builds near the rope; a confirmed four or six lifts the bowl.
     const rope = boundaryDistanceAlong(ball.position.x, ball.position.z);
@@ -1079,9 +1049,6 @@ export class Game {
       v3(horizontal * Math.sin(o.exitDirection), o.exitSpeed * Math.sin(o.exitElevation), horizontal * Math.cos(o.exitDirection)),
       v3()
     );
-    // The shot leg starts on the middle of the bat, at the same point the ball
-    // was seated, so the line turns exactly where the bat met it.
-    this.trail.open("struck", seated);
     this.struck = true;
     this.outcome = o;
     this.contactClock = 0;
@@ -1863,62 +1830,11 @@ export class Game {
     this.marker.material.color.setHex(this.mode === "batting" ? 0x55bdff : this.markerLocked ? 0xb8ff85 : 0x7de8ff);
   }
 
-  /**
-   * Extend the ball line and the pitch mark.
-   *
-   * Recording stops the moment a fielder has the ball. The line is the story of
-   * the delivery and the shot; a throw back to the keeper drawn in the same
-   * colour as the shot reads as the batsman having hit it there.
-   */
-  private updateBallLine(): void {
-    if (this.trail.leg && this.holder) this.trailClosed = true;
-    if (!this.trailClosed) {
-      /*
-       * The pitch of the ball happens inside a 240 Hz substep, so by the time
-       * this frame runs the ball is already centimetres past it. The new leg is
-       * therefore opened at the RECORDED contact point rather than at wherever
-       * the ball is now, which is what puts the kink in the line exactly on the
-       * mark instead of a frame late and in the air.
-       *
-       * A full toss that is hit before it ever lands still bounces later, out in
-       * the field; that bounce is not the pitch of the ball and must not be
-       * marked as one.
-       */
-      if (this.world.hasPitched && !this.trailPitched && this.world.lastBounce) {
-        this.trailPitched = true;
-        if (!this.struck) {
-          const at = { x: this.world.lastBounce.position.x, y: BALL_RADIUS, z: this.world.lastBounce.position.z };
-          this.trail.open("pitched", at);
-          this.ballLine.markPitch(at);
-        }
-      }
-      if (!this.holder) this.trail.push(this.world.ball.position);
-    }
-    this.ballLine.update(this.trail, {
-      // Cutaway doubles replace the live actors, so a line through them would be
-      // drawn across a scene the ball is not in.
-      visible: this.ballLineOn && this.live.momentShot === null,
-      // Dims into the cut between deliveries rather than popping out; the points
-      // themselves are dropped at the fade's peak, in resetPositions.
-      opacity: 1 - this.live.fade,
-    });
-  }
-
-  /** Turn the ball line off for a clean look, and back on. */
-  toggleBallLine(): boolean {
-    this.ballLineOn = !this.ballLineOn;
-    return this.ballLineOn;
-  }
-
   private onResize = () => {
     const w = this.canvas.clientWidth || window.innerWidth;
     const h = this.canvas.clientHeight || window.innerHeight;
     if (this.pipeline) this.pipeline.resize(w, h);
     else this.renderer.setSize(w, h, false);
-    // After the pipeline, which owns the pixel ratio: Line2 measures its width
-    // against the drawing buffer, so it needs the supersampled size.
-    const buffer = this.renderer.getDrawingBufferSize(_buffer);
-    this.ballLine?.resize(buffer.x, buffer.y);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
   };
@@ -1930,7 +1846,6 @@ export class Game {
     window.removeEventListener("resize", this.onResize);
     this.input.dispose();
     this.marker?.material.dispose();
-    this.ballLine?.dispose();
     this.previewRig?.root.traverse((o) => {
       const m = o as THREE.Mesh;
       if (!m.isMesh) return;
@@ -1953,6 +1868,5 @@ export class Game {
 const _v1 = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _v3 = new THREE.Vector3();
-const _buffer = new THREE.Vector2();
 
 export { RUN_TIME, BOUNDARY_STRAIGHT, boundaryDistanceAlong, PLAYER_HEIGHT };
