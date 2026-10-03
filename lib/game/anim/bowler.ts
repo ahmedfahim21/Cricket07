@@ -29,6 +29,7 @@ import type { BowlerStyle } from "../match/bowling";
 import { C, Pose, PoseValues, applyPose, copyPose, jointPoint, makePose, setPose } from "./pose";
 import { Track, type Key } from "./track";
 import { cycleLength, dutyFactor, gaitPose, idlePose } from "./locomotion";
+import { DEFAULT_BOWLING, type BowlingStyle } from "./style";
 
 export interface Approach {
   /** Metres from the mark to the start of the delivery stride. */
@@ -95,12 +96,22 @@ const G = S.ankleH;
 export function deliveryKeys(
   start: Pose,
   v0: number,
-  look: THREE.Vector3
+  look: THREE.Vector3,
+  style: BowlingStyle = DEFAULT_BOWLING
 ): { keys: Key[]; release: number } {
   const sp = THREE.MathUtils.clamp(v0 / 6.4, 0.5, 1.15);
   const tm = THREE.MathUtils.clamp(Math.sqrt(6.4 / v0), 0.9, 1.4);
   const T = (t: number) => t * tm;
   const Z = (z: number) => z * sp;
+  // The style, as factors that are all 1 (or 0) for the default action.
+  // Leap heights. Amplified: a bound is read by eye from a long way off, and
+  // a few centres of difference in hip height is invisible on a TV camera.
+  const B = Math.max(0.25, 1 + 1.6 * (style.bound - 1));
+  const side = (1.15 - 0.7 * style.frontOn) / 1.01; // hip and shoulder turn
+  const arm = style.armAngle; // arm out from vertical at release
+  const reach = style.frontArm - 1; // front arm higher and pulling harder
+  const ft = style.followThrough; // travel and fold after release
+  const F = (z: number) => FFC_Z * sp + (z - FFC_Z * sp) * ft; // follow-through z
 
   const k0 = copyPose(makePose(), start);
   // The front arm starts from hanging down, expressed at 2PI so it rises
@@ -136,107 +147,116 @@ export function deliveryKeys(
     // Take-off: the left foot leaves, the right knee is up in front, the
     // arms load — bowling arm down by the hip, front arm rising.
     key(0.14, {
-      pelvisZ: Z(-0.86), pelvisY: 0.08, pelvisYaw: -0.3, pelvisPitch: 0.06,
-      torsoYaw: -0.2, torsoPitch: 0.08,
-      footLX: pL.x, footLY: 0.2, footLZ: Z(-0.86) + 0.42, footLPitch: -0.7,
-      footRX: 0.1, footRY: 0.42, footRZ: Z(-0.86) - 0.15, footRPitch: 0.2,
+      pelvisZ: Z(-0.86), pelvisY: 0.08 * B, pelvisYaw: -0.3 * side, pelvisPitch: 0.06,
+      torsoYaw: -0.2 * side, torsoPitch: 0.08,
+      footLX: pL.x, footLY: 0.2 * B, footLZ: Z(-0.86) + 0.42, footLPitch: -0.7,
+      footRX: 0.1, footRY: 0.42 * B, footRZ: Z(-0.86) - 0.15, footRPitch: 0.2,
       aimRSwing: 0.25, aimRElbow: 0.4,
       aimLSwing: 5.2, aimLElbow: 0.5,
     }),
 
     // In the air, coiling side-on. Front arm reaching up at the batsman.
     key(0.3, {
-      pelvisZ: Z(-1.9), pelvisY: 0.16, pelvisYaw: -0.85, pelvisPitch: 0.05,
-      torsoYaw: -0.45, torsoRoll: 0.1,
-      footLX: -0.05, footLY: 0.3, footLZ: Z(-1.9) + 0.35, footLPitch: -0.4,
-      footRX: 0.12, footRY: 0.25, footRZ: Z(-1.9) - 0.1, footRYaw: -0.8,
+      pelvisZ: Z(-1.9), pelvisY: 0.16 * B, pelvisYaw: -0.85 * side, pelvisPitch: 0.05,
+      torsoYaw: -0.45 * side, torsoRoll: 0.1,
+      footLX: -0.05, footLY: 0.3 * B, footLZ: Z(-1.9) + 0.35, footLPitch: -0.4,
+      footRX: 0.12, footRY: 0.25 * B, footRZ: Z(-1.9) - 0.1, footRYaw: -0.8 * side,
       aimRSwing: 0.7, aimRElbow: 0.3, aimRSide: 0.1,
-      aimLSwing: 3.95, aimLElbow: 0.2, aimLSide: -0.1,
+      aimLSwing: 3.95 - 0.8 * reach, aimLElbow: Math.max(0, 0.2 - 0.9 * reach), aimLSide: -0.1,
     }),
 
     // Back-foot contact: lands sideways; leans back; hips half open,
     // shoulders closed.
     key(0.44, {
-      pelvisX: 0.05, pelvisZ: Z(-2.35), pelvisY: -0.02, pelvisYaw: -1.05,
-      torsoYaw: -0.4, torsoRoll: 0.1, torsoPitch: -0.05,
-      footRX: bfc.x, footRY: G, footRZ: bfc.z, footRYaw: -1.3,
-      footLX: -0.05, footLY: 0.3, footLZ: Z(-2.35) - 0.55, footLYaw: -0.3,
+      pelvisX: 0.05, pelvisZ: Z(-2.35), pelvisY: -0.02, pelvisYaw: -1.05 * side,
+      torsoYaw: -0.4 * side, torsoRoll: 0.1, torsoPitch: -0.05,
+      footRX: bfc.x, footRY: G, footRZ: bfc.z, footRYaw: -1.3 * side,
+      footLX: -0.05, footLY: 0.3 * Math.min(1, B), footLZ: Z(-2.35) - 0.55, footLYaw: -0.3,
       aimRSwing: 1.0, aimRElbow: 0.2,
-      aimLSwing: 3.9, aimLElbow: 0.15,
+      aimLSwing: 3.9 - 0.8 * reach, aimLElbow: Math.max(0, 0.15 - 0.9 * reach),
     }),
 
     // Front-foot contact: braced. Maximum hip-shoulder separation.
     key(0.58, {
-      pelvisX: 0.0, pelvisZ: Z(-3.2), pelvisY: -0.03, pelvisYaw: -0.75,
-      torsoYaw: -0.55, torsoRoll: 0.25, torsoPitch: 0.05,
+      pelvisX: 0.0, pelvisZ: Z(-3.2), pelvisY: -0.03, pelvisYaw: -0.75 * side,
+      torsoYaw: -0.55 * side, torsoRoll: 0.25, torsoPitch: 0.05,
       footLX: ffc.x, footLY: G, footLZ: ffc.z, footLYaw: -0.35,
       // Back foot up on its toe and dragging: no longer bearing weight.
-      footRX: bfc.x, footRY: G + 0.14, footRZ: bfc.z - 0.05, footRYaw: -1.3, footRPitch: -0.8,
-      aimRSwing: 2.35, aimRElbow: 0.05, aimRSide: 0.05,
+      footRX: bfc.x, footRY: G + 0.14, footRZ: bfc.z - 0.05, footRYaw: -1.3 * side, footRPitch: -0.8,
+      aimRSwing: 2.35, aimRElbow: 0.05, aimRSide: 0.05 + ARM_OUT * 0.6 * arm,
       aimLSwing: 4.3, aimLElbow: 0.6,
     }),
 
     // Release: posted up over a straight front leg, shoulders square, arm
     // just past vertical. Height comes from leaning AWAY (sideways), not from
     // bending forward — the trunk only folds after the ball has gone.
+    // A round-arm sling comes out sideways and does not lean away for height.
     key(0.66, {
       pelvisX: -0.03, pelvisZ: ffc.z + 0.12, pelvisY: 0.0, pelvisYaw: -0.2,
-      torsoYaw: 0.25, torsoRoll: 0.4, torsoPitch: 0.1,
+      torsoYaw: 0.25, torsoRoll: 0.4 * (1 - arm), torsoPitch: 0.1,
       footLX: ffc.x, footLY: G, footLZ: ffc.z, footLYaw: -0.35,
       footRX: 0.1, footRY: G + 0.22, footRZ: Z(-2.8), footRYaw: -1.0, footRPitch: -0.9,
-      aimRSwing: 3.2, aimRElbow: 0.02, aimRSide: -0.08,
+      aimRSwing: 3.2, aimRElbow: 0.02, aimRSide: -0.08 + ARM_OUT * arm,
       aimLSwing: 5.9, aimLElbow: 1.0,
     }),
 
     // Follow-through: arm sweeping across, trunk folding, back leg through.
     key(0.78, {
-      pelvisX: -0.08, pelvisZ: Z(-3.85), pelvisY: -0.1, pelvisYaw: 0.25,
-      torsoYaw: 0.6, torsoRoll: 0.05, torsoPitch: 0.75,
+      pelvisX: -0.08, pelvisZ: F(Z(-3.85)), pelvisY: -0.1, pelvisYaw: 0.25,
+      torsoYaw: 0.6, torsoRoll: 0.05, torsoPitch: 0.75 * ft,
       footLX: ffc.x, footLY: G, footLZ: ffc.z, footLYaw: -0.35,
-      footRX: 0.02, footRY: 0.2, footRZ: Z(-3.7), footRYaw: -0.2,
+      footRX: 0.02, footRY: 0.2, footRZ: F(Z(-3.7)), footRYaw: -0.2,
       aimRSwing: 4.7, aimRElbow: 0.15, aimRSide: -0.5,
       aimLSwing: 6.6, aimLElbow: 0.8,
     }),
 
     key(0.95, {
-      pelvisX: -0.2, pelvisZ: Z(-4.45), pelvisY: -0.06, pelvisYaw: 0.3,
-      torsoYaw: 0.5, torsoPitch: 0.55,
-      footRX: -0.3, footRY: G, footRZ: Z(-4.55), footRYaw: 0.2,
+      pelvisX: -0.2, pelvisZ: F(Z(-4.45)), pelvisY: -0.06, pelvisYaw: 0.3,
+      torsoYaw: 0.5, torsoPitch: 0.55 * ft,
+      footRX: -0.3, footRY: G, footRZ: F(Z(-4.55)), footRYaw: 0.2,
       // Front foot has left its print and is swinging through.
-      footLX: -0.3, footLY: 0.22, footLZ: Z(-4.15), footLYaw: -0.1, footLPitch: -0.3,
+      footLX: -0.3, footLY: 0.22, footLZ: F(Z(-4.15)), footLYaw: -0.1, footLPitch: -0.3,
       aimRSwing: 5.9, aimRElbow: 0.3, aimRSide: -0.7,
       aimLSwing: 6.4, aimLElbow: 0.6,
     }),
 
     key(1.15, {
-      pelvisX: -0.5, pelvisZ: Z(-5.2), pelvisY: -0.03, pelvisYaw: 0.35,
+      pelvisX: -0.5, pelvisZ: F(Z(-5.2)), pelvisY: -0.03, pelvisYaw: 0.35,
       torsoYaw: 0.2, torsoPitch: 0.3,
-      footLX: -0.75, footLY: G, footLZ: Z(-5.35), footLYaw: 0.35,
-      footRX: -0.3, footRY: G + 0.08, footRZ: Z(-4.55), footRYaw: 0.2, footRPitch: -0.5,
+      footLX: -0.75, footLY: G, footLZ: F(Z(-5.35)), footLYaw: 0.35,
+      footRX: -0.3, footRY: G + 0.08, footRZ: F(Z(-4.55)), footRYaw: 0.2, footRPitch: -0.5,
       aimRSwing: 6.2, aimRElbow: 0.5, aimRSide: -0.3, aimRW: 0.5,
       aimLSwing: 6.3, aimLElbow: 0.5, aimLW: 0.5,
       shLFlex: 0.1, shRFlex: 0.1, elbowL: 0.4, elbowR: 0.4,
     }),
 
     key(1.42, {
-      pelvisX: -0.85, pelvisZ: Z(-5.85), pelvisY: -0.01, pelvisYaw: 0.4,
+      pelvisX: -0.85, pelvisZ: F(Z(-5.85)), pelvisY: -0.01, pelvisYaw: 0.4,
       torsoPitch: 0.12,
-      footRX: -1.05, footRY: G, footRZ: Z(-5.95), footRYaw: 0.4,
-      footLX: -0.75, footLY: G, footLZ: Z(-5.35), footLYaw: 0.35,
+      footRX: -1.05, footRY: G, footRZ: F(Z(-5.95)), footRYaw: 0.4,
+      footLX: -0.75, footLY: G, footLZ: F(Z(-5.35)), footLYaw: 0.35,
       aimRW: 0, aimLW: 0, lookW: 0.3,
       shLFlex: 0.05, shRFlex: 0.05, shLAbd: 0.1, shRAbd: 0.1, elbowL: 0.25, elbowR: 0.25,
     }),
 
     key(1.8, {
-      pelvisX: -1.1, pelvisZ: Z(-6.05), pelvisY: -0.01, pelvisYaw: 0.45,
-      footLX: -1.25, footLY: G, footLZ: Z(-6.1), footLYaw: 0.55,
-      footRX: -0.98, footRY: G, footRZ: Z(-6.05), footRYaw: 0.3,
+      pelvisX: -1.1, pelvisZ: F(Z(-6.05)), pelvisY: -0.01, pelvisYaw: 0.45,
+      footLX: -1.25, footLY: G, footLZ: F(Z(-6.1)), footLYaw: 0.55,
+      footRX: -0.98, footRY: G, footRZ: F(Z(-6.05)), footRYaw: 0.3,
       aimRW: 0, aimLW: 0, lookW: 0,
       shLAbd: 0.1, shRAbd: 0.1, elbowL: 0.2, elbowR: 0.2,
     }, true),
   ];
   return { keys, release: T(0.66) };
 }
+
+/**
+ * Which way `aimRSide` carries the bowling arm out from the head, for a
+ * round-arm action: the release hand moves out to the bowler's right (+X)
+ * and comes down. The other sign swings the arm across over the head. Pinned
+ * by a test.
+ */
+const ARM_OUT = 1;
 
 /** Forward-travel scale of the stride for an approach (see deliveryKeys). */
 function strideTravel(a: Approach): number {
@@ -278,6 +298,7 @@ export class BowlerAnimator {
   onRelease?: (handWorld: THREE.Vector3) => void;
 
   private approach: Approach = APPROACH["fast-medium"];
+  private style: BowlingStyle = DEFAULT_BOWLING;
   private scale = 1;
   private originZ = 0;
   private lineX = 0;
@@ -299,8 +320,15 @@ export class BowlerAnimator {
    * Stand at the mark for a delivery whose stride begins at world z `originZ`
    * on the line `lineX`, looking at `lookWorld` (the batsman's stumps).
    */
-  setup(approach: Approach, originZ: number, lineX: number, lookWorld: THREE.Vector3): void {
+  setup(
+    approach: Approach,
+    originZ: number,
+    lineX: number,
+    lookWorld: THREE.Vector3,
+    style: BowlingStyle = DEFAULT_BOWLING
+  ): void {
     this.approach = approach;
+    this.style = style;
     this.scale = strideScale(approach);
     this.originZ = originZ;
     this.lineX = lineX;
@@ -375,7 +403,7 @@ export class BowlerAnimator {
     this.world.set(this.lineX, 0, this.originZ);
     // Stumps in the root space of the hand-over point (root faces -Z, yaw 0).
     const look = this.lookWorld.clone().sub(this.world).divideScalar(RIG_SCALE);
-    const { keys, release } = deliveryKeys(this.pose, this.speed / RIG_SCALE, look);
+    const { keys, release } = deliveryKeys(this.pose, this.speed / RIG_SCALE, look, this.style);
     this.track = new Track(keys);
     this.releaseAt = release;
     this.t = 0;
@@ -457,10 +485,11 @@ export function simulateRelease(
   originZ: number,
   lineX: number,
   lookWorld: THREE.Vector3,
+  style: BowlingStyle = DEFAULT_BOWLING,
   dt = 1 / 120
 ): { hand: THREE.Vector3; time: number } {
   const b = new BowlerAnimator(rig);
-  b.setup(approach, originZ, lineX, lookWorld);
+  b.setup(approach, originZ, lineX, lookWorld, style);
   b.startRunup();
   let hand: THREE.Vector3 | null = null;
   b.onRelease = (h) => {
