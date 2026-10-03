@@ -2,8 +2,10 @@
 /**
  * Runs tools/players/build.py inside Blender, headless.
  *
- *   pnpm build:players                      every build in builds.json
+ *   pnpm build:players                      every MPFB build in builds.json
  *   PLAYER_ONLY=european-lean pnpm build:players
+ *   pnpm build:rocketbox                    every avatar in rocketbox/avatars.json
+ *                                           (download them first: pnpm fetch:rocketbox)
  *
  * Blender is found from $BLENDER, then the usual install locations. It needs
  * the MPFB extension installed and enabled (Preferences > Get Extensions).
@@ -26,5 +28,6 @@ if (!blender) {
   console.error("Blender not found. Set BLENDER to its executable.");
   process.exit(1);
 }
-const r = spawnSync(blender, ["-b", "--python", join(here, "build.py")], { stdio: "inherit" });
+const script = process.argv[2] === "rocketbox" ? join(here, "rocketbox", "build.py") : join(here, "build.py");
+const r = spawnSync(blender, ["-b", "--python", script], { stdio: "inherit" });
 process.exit(r.status ?? 1);

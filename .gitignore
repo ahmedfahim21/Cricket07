@@ -4,3 +4,6 @@ out
 *.tsbuildinfo
 .DS_Store
 .env*.local
+
+# Downloaded source assets (Rocketbox FBX/TGA); rebuilt outputs live in public/
+tools/players/.cache
