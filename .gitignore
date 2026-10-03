@@ -7,3 +7,4 @@ out
 
 # Downloaded source assets (Rocketbox FBX/TGA); rebuilt outputs live in public/
 tools/players/.cache
+__pycache__/
