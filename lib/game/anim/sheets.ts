@@ -9,6 +9,8 @@
  * a number.
  */
 
+import type { BodyLibrary } from "../assets/bodies";
+import { dressAs, sampleFor } from "../roster/cast";
 import * as THREE from "three";
 import {
   BATTING_KIT,
@@ -58,9 +60,17 @@ export function posedFrame(
   label?: string
 ): MotionFrame & { rig: PlayerRig } {
   const rig = makePlayer({ role, colours });
+  dressSample(rig, role);
   applyPose(rig, pose);
   rig.root.rotation.y = yaw;
   return { group: rig.root, label, rig };
+}
+
+/** Bodies for the frames, set by `motionSheets`. Measuring rigs stay bare. */
+let sheetBodies: BodyLibrary | null = null;
+function dressSample(rig: PlayerRig, role: Role): void {
+  if (!sheetBodies) throw new Error("motion sheets: no bodies loaded");
+  dressAs(rig, sheetBodies, sampleFor(role));
 }
 
 export function marker(color: number, r = 0.05): THREE.Mesh {
@@ -415,6 +425,7 @@ function fieldingSheet(): MotionSheet {
   kf.push(posedFrame("keeper", FIELDING_KIT, keeperCrouch(makePose(), 0), FRONT, "crouch"));
   for (const [h, lbl] of [[0.3, "low take"], [0.9, "waist"], [1.6, "chest"]] as const) {
     const rig = makePlayer({ role: "keeper", colours: FIELDING_KIT });
+    dressSample(rig, "keeper");
     const k = new FielderAnimator(rig, true);
     k.place(new THREE.Vector3(0, 0, 0), 0);
     const at = new THREE.Vector3(0.1, h, -0.5);
@@ -431,7 +442,8 @@ function fieldingSheet(): MotionSheet {
   return { name: "fielding", rows };
 }
 
-export async function motionSheets(): Promise<MotionSheet[]> {
+export async function motionSheets(bodies: BodyLibrary): Promise<MotionSheet[]> {
+  sheetBodies = bodies;
   const batting: MotionSheet[] = [];
   for (let i = 0; i < SHOTS.length; i += 2) {
     batting.push(battingSheet(SHOTS.slice(i, i + 2), `batting-${i / 2 + 1}`));
