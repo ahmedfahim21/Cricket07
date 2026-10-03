@@ -63,6 +63,10 @@ import { umpireSignalPose } from "./anim/umpire";
 import { BOUNDARY_CUT_TIME, BOUNDARY_HOLD_TIME, UMPIRE_SIGNAL_START, type BoundaryRuns } from "./presentation/boundary";
 import { dismissedBatsman, momentShot, nextReaction, reactionTime, WICKET_HOLD_TIME, type MatchMoment, type MomentShot } from "./presentation/moments";
 import { ReactionScene } from "./presentation/reactions";
+import { loadBodies, type BodyLibrary } from "./assets/bodies";
+import { dressAs } from "./roster/cast";
+import { buildFor } from "./roster/appearance";
+import { FIELDING, HOME, UMPIRE, VISITORS, bowlerFor, buildsNeeded, fieldersFor, playerNamed, type RosterPlayer } from "./roster/squads";
 import { BOWLERS, DEFAULT_BOWLING_AIM, bowlingStatus, isBowlingWide, lockPlayerDelivery, moveBowlingAim, playerDelivery, shouldChangeBowler, type BowlingAim } from "./match/player-bowling";
 import { decideAiShot, type AiDecision } from "./match/ai-batsman";
 import { NEUTRAL_INTENT } from "./input/bindings";
@@ -289,6 +293,8 @@ export class Game {
   private umpirePose = makePose();
   private boundaryCameraActive = false;
   private reactions!: ReactionScene;
+  private bodies!: BodyLibrary;
+  private cel!: ReturnType<typeof createCelifier>;
   private reactionCameraShot: MomentShot | null = null;
   private cosmeticRand = mulberry32(7062026);
   private previousBowlerReaction = -1;
@@ -384,7 +390,7 @@ export class Game {
   ) {
     this.onTelemetry = opts.onTelemetry;
     try { this.progress = loadProgress(window.localStorage); } catch { /* Storage may be disabled. */ }
-    this.match = newInnings(["Sharma", "Patel", "Khan", "Mitchell", "Okafor", "Silva", "Brennan"]);
+    this.match = newInnings(HOME.players.map((p) => p.name));
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
     // The pipeline owns pixel ratio, tone mapping and anti-aliasing: the scene
@@ -401,8 +407,11 @@ export class Game {
 
   /** Async because Rapier is WASM and must load before a world exists. */
   async start(): Promise<void> {
-    await initPhysics();
+    // The physics WASM and the players' bodies load together.
+    const builds = buildsNeeded([HOME, VISITORS, FIELDING], [UMPIRE], buildFor);
+    const [, bodies] = await Promise.all([initPhysics(), loadBodies(builds)]);
     if (this.disposed) return;
+    this.bodies = bodies;
 
     this.lib = createMaterialLibrary(this.renderer);
     this.world = new CricketWorld();
@@ -470,7 +479,8 @@ export class Game {
     this.scene.add(bowlerRig.root);
     this.bowler = new BowlerAnimator(bowlerRig);
     this.bowler.onRelease = (hand) => this.release(hand);
-    // Preview choreography must never disturb the visible bowler's pose.
+    // Preview choreography must never disturb the visible bowler's pose. Never
+    // drawn, so it is a bare skeleton.
     this.previewRig = makePlayer({ role: "bowler", colours: FIELDING_KIT });
 
     const umpireRig = makePlayer({ role: "umpire" });
@@ -479,7 +489,8 @@ export class Game {
 
     this.field = fieldFor(this.hand);
     this.field.forEach((f, i) => {
-      const rig = makePlayer({ role: f.keeper ? "keeper" : "fielder", colours: FIELDING_KIT });
+      const role = f.keeper ? "keeper" : "fielder";
+      const rig = makePlayer({ role, colours: FIELDING_KIT });
       this.scene.add(rig.root);
       this.fielders.push(new FielderAnimator(rig, !!f.keeper, 21 + i));
       if (f.keeper) this.keeperIndex = i;
@@ -493,8 +504,8 @@ export class Game {
      * celify converts the finished scene to banded toon materials in one pass,
      * then the pipeline draws it through the ink / haze / grade pass.
      */
-    const cel = createCelifier({ shadowTint: new THREE.Color(DAY_MATCH_PRESET.celShadowTint) });
-    cel.apply(this.scene);
+    this.cel = createCelifier({ shadowTint: new THREE.Color(DAY_MATCH_PRESET.celShadowTint) });
+    this.cel.apply(this.scene);
     this.marker = new THREE.Mesh(new THREE.RingGeometry(0.26, 0.34, 48), new THREE.MeshBasicMaterial({
       color: 0x7de8ff, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide,
     }));
@@ -549,6 +560,7 @@ export class Game {
     const other = this.batsmen.find((b) => b !== striker)!;
     other.index = this.match.nonStriker;
     striker.index = this.match.striker;
+    this.dressCast();
 
     striker.bat = new BatsmanAnimator();
     striker.mode = "bat";
@@ -1698,9 +1710,47 @@ export class Game {
   setBowlerStyle(style: BowlerStyle): void {
     this.style = style;
     if (this.phase === "idle" && this.world) {
+      this.dressCast();
       const approach = APPROACH[style];
       this.bowler.setup(approach, deliveryOrigin(approach, FRONT_FOOT_Z), BOWLER_LINE_X, STUMPS_LOOK);
     }
+  }
+
+  /* ---------------------------------------------------------------- *
+   * Casting: who is in each rig
+   * ---------------------------------------------------------------- */
+
+  /** The side batting: the player's own, or the AI's when the player bowls. */
+  private battingSquad() {
+    return this.mode === "bowling" ? VISITORS : HOME;
+  }
+
+  /** Whoever is bowling: the player's chosen bowler, or the AI's bowler of this style. */
+  private currentBowler(): RosterPlayer {
+    return this.mode === "bowling" ? playerNamed(FIELDING, BOWLERS[this.playerBowler].name) : bowlerFor(FIELDING, this.style);
+  }
+
+  private wear(rig: PlayerRig, player: RosterPlayer): void {
+    dressAs(rig, this.bodies, player);
+  }
+
+  /**
+   * Dress every rig as the person it currently is: the two batsmen by name off
+   * the scorecard, the bowler, the ten fielders and keeper who are not
+   * bowling, the umpire, and the broadcast doubles as the same people.
+   */
+  private dressCast(): void {
+    const squad = this.battingSquad();
+    const batters = this.batsmen.map((b) => playerNamed(squad, this.match.batsmen[b.index].name));
+    this.batsmen.forEach((b, i) => this.wear(b.rig, batters[i]));
+    const bowler = this.currentBowler();
+    this.wear(this.bowler.rig, bowler);
+    const field = fieldersFor(FIELDING, bowler, this.fielders.length);
+    this.fielders.forEach((f, i) => this.wear(f.rig, field[i]));
+    this.wear(this.umpire.rig, UMPIRE);
+    this.reactions.cast(bowler, field, batters, (rig, p) => this.wear(rig, p));
+    // New meshes come in as PBR; give them the cel look like everything else.
+    this.cel.apply(this.scene);
   }
 
   /** Start a fresh attempt only for unlocked levels, without recreating the scene. */
@@ -1716,7 +1766,7 @@ export class Game {
     this.live.fade = 0;
     this.live.lastBand = null;
     this.live.shotFeedback = "";
-    this.match = newInnings(["Sharma", "Patel", "Khan", "Mitchell", "Okafor", "Silva", "Brennan"]);
+    this.match = newInnings(HOME.players.map((p) => p.name));
     this.live.deliverySpeed = 0;
     this.style = CHALLENGES[level].styles[0];
     this.lastEvent = "Press Space to bowl";
@@ -1749,7 +1799,7 @@ export class Game {
     this.previousAiSpeed = null;
     this.live.deliverySpeed = 0;
     this.bowlingAim = { ...DEFAULT_BOWLING_AIM };
-    this.match = newInnings(["Sharma", "Patel", "Khan", "Singh", "Rao", "Das", "Kumar"]);
+    this.match = newInnings(VISITORS.players.map((p) => p.name));
     this.style = BOWLERS[this.playerBowler].style;
     this.cameraMode = "tv";
     this.camera.position.copy(CAMERA_BROADCAST);
