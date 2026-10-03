@@ -1,3 +1,4 @@
+import { DEFAULT_BOWLING } from "../anim/style";
 import * as THREE from "three";
 import { beforeAll, describe, expect, it } from "vitest";
 import { initPhysics, CricketWorld } from "../physics/world";
@@ -30,7 +31,7 @@ describe("shared delivery prediction", () => {
       for (const dt of [1 / 30, 1 / 60, 1 / 144]) {
         const world = new CricketWorld();
         const marker = previewBounce(snapshot(preview), world.pitch, world.outfield)!;
-        const liveHand = simulateRelease(rig, approach, origin, -0.45, look, dt).hand;
+        const liveHand = simulateRelease(rig, approach, origin, -0.45, look, DEFAULT_BOWLING, dt).hand;
         world.release(snapshot(liveHand));
         for (let i = 0; i < 300 && !world.hasPitched; i++) world.step(dt);
         const actual = world.lastBounce!.position;

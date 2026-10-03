@@ -26,6 +26,29 @@ export interface BallOutcome {
   six?: boolean;
 }
 
+/**
+ * A bowler's figures, as a scorecard writes them: overs, maidens, runs, wickets.
+ *
+ * `runs` is what is CHARGED to him, which is not the same as what the team
+ * scored off the over. Byes and leg-byes are the keeper's and the batsmen's
+ * doing, not the bowler's, and never appear here; wides and no-balls are his
+ * and do. Run-outs are not his wicket either.
+ */
+export interface BowlingFigures {
+  name: string;
+  /** Legal balls bowled. Overs are derived, never stored. */
+  balls: number;
+  runs: number;
+  wickets: number;
+  maidens: number;
+}
+
+/** Runs and balls since the last wicket fell. */
+export interface Partnership {
+  runs: number;
+  balls: number;
+}
+
 export interface BatsmanState {
   name: string;
   runs: number;
@@ -54,6 +77,22 @@ export interface MatchState {
   complete: boolean;
   /** Ball-by-ball log, newest last. */
   timeline: string[];
+  /** Runs and balls since the last wicket, which is what a broadcast shows. */
+  partnership: Partnership;
+  /** Scorebook symbols for the over in progress; emptied when the over ends. */
+  thisOver: string[];
+  /** Everything the team has scored this over, extras included. */
+  runsThisOver: number;
+  /**
+   * Runs charged to the BOWLER this over, which is what decides a maiden —
+   * an over of byes is still a maiden. Kept apart from `runsThisOver` because
+   * the two differ exactly when it matters.
+   */
+  chargedThisOver: number;
+  /** Figures for everyone who has bowled, in the order they first bowled. */
+  bowlers: BowlingFigures[];
+  /** Index into `bowlers`, or -1 before anyone has been named. */
+  bowlerIndex: number;
 }
 
 export const BALLS_PER_OVER = 6;
@@ -76,6 +115,12 @@ export function newInnings(names: string[], oversLimit = 1): MatchState {
     extras: 0,
     complete: false,
     timeline: [],
+    partnership: { runs: 0, balls: 0 },
+    thisOver: [],
+    runsThisOver: 0,
+    chargedThisOver: 0,
+    bowlers: [],
+    bowlerIndex: -1,
   };
 }
 
@@ -109,17 +154,40 @@ function describe(o: BallOutcome): string {
   return String(o.runs);
 }
 
+/** Runs this delivery puts against the bowler's name rather than the team's. */
+function chargedToBowler(o: BallOutcome): number {
+  const illegal = o.extra?.kind === "wide" || o.extra?.kind === "no-ball";
+  return o.runs + (illegal ? o.extra!.runs : 0);
+}
+
 /**
  * Apply one delivery.
  *
  * Returns a NEW state; the input is never mutated, so the caller can keep the
  * previous state for an undo or a replay without defensive copying.
+ *
+ * `bowler` names whoever is bowling. Pass it and his figures are kept; leave it
+ * out and the ball goes to whoever was named last, so a caller that does not
+ * model bowlers at all still scores correctly.
  */
-export function applyBall(state: MatchState, outcome: BallOutcome): MatchState {
+export function applyBall(state: MatchState, outcome: BallOutcome, bowler?: string): MatchState {
   if (state.complete) return state;
 
   const batsmen = state.batsmen.map((b) => ({ ...b }));
   const striker = batsmen[state.striker];
+
+  // Figures are copied, never mutated in place, for the same reason the rest of
+  // this function is: a caller may be holding the previous state.
+  const bowlers = state.bowlers.map((b) => ({ ...b }));
+  let bowlerIndex = state.bowlerIndex;
+  if (bowler !== undefined) {
+    bowlerIndex = bowlers.findIndex((b) => b.name === bowler);
+    if (bowlerIndex === -1) {
+      bowlerIndex = bowlers.length;
+      bowlers.push({ name: bowler, balls: 0, runs: 0, wickets: 0, maidens: 0 });
+    }
+  }
+  const figures = bowlers[bowlerIndex];
 
   const extraRuns = outcome.extra?.runs ?? 0;
   const batRuns = outcome.runs;
@@ -144,6 +212,23 @@ export function applyBall(state: MatchState, outcome: BallOutcome): MatchState {
     striker.dismissal = outcome.dismissal;
     wickets += 1;
   }
+
+  if (figures) {
+    figures.balls += legal ? 1 : 0;
+    figures.runs += chargedToBowler(outcome);
+    // A run-out is the fielding side's wicket, not the bowler's.
+    if (outcome.dismissal && outcome.dismissal !== "run-out") figures.wickets += 1;
+  }
+
+  // The partnership counts everything the pair put on, extras included, and the
+  // ball that ends it belongs to it before it is reset below.
+  const partnership = {
+    runs: state.partnership.runs + batRuns + extraRuns,
+    balls: state.partnership.balls + (legal ? 1 : 0),
+  };
+  let thisOver = [...state.thisOver, describe(outcome)];
+  let runsThisOver = state.runsThisOver + batRuns + extraRuns;
+  let chargedThisOver = state.chargedThisOver + chargedToBowler(outcome);
 
   let ballsThisOver = state.ballsThisOver + (legal ? 1 : 0);
   let overs = state.overs;
@@ -176,6 +261,12 @@ export function applyBall(state: MatchState, outcome: BallOutcome): MatchState {
     ballsThisOver = 0;
     overs += 1;
     [strikerIdx, nonStrikerIdx] = [nonStrikerIdx, strikerIdx];
+    // Nothing charged to him across the whole over: a maiden. An over of byes
+    // counts, because none of those runs were his.
+    if (figures && chargedThisOver === 0) figures.maidens += 1;
+    thisOver = [];
+    runsThisOver = 0;
+    chargedThisOver = 0;
   }
 
   // All out when only one batsman is left standing.
@@ -193,6 +284,13 @@ export function applyBall(state: MatchState, outcome: BallOutcome): MatchState {
     extras,
     complete,
     timeline: [...state.timeline, describe(outcome)],
+    // A wicket ends the partnership; the next pair start from nought.
+    partnership: outcome.dismissal ? { runs: 0, balls: 0 } : partnership,
+    thisOver,
+    runsThisOver,
+    chargedThisOver,
+    bowlers,
+    bowlerIndex,
   };
 }
 

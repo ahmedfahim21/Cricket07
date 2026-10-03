@@ -2,12 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Game, type LiveState, type Telemetry } from "@/lib/game/engine";
-import { CONTROL_HELP, BOWLING_CONTROL_HELP } from "@/lib/game/input/bindings";
+import { CONTROL_HELP, BOWLING_CONTROL_HELP, EXTRA_CONTROL_HELP } from "@/lib/game/input/bindings";
 import { DeliveryPanel } from "./hud/DeliveryPanel";
 import { FadeOverlay } from "./hud/FadeOverlay";
 import { FieldRadar } from "./hud/FieldRadar";
 import { ScorePlate } from "./hud/ScorePlate";
 import { ShotMeter } from "./hud/ShotMeter";
+import { ShotIntent } from "./hud/ShotIntent";
 import { ChallengePanel } from "./hud/ChallengePanel";
 import { BoundaryCelebration } from "./hud/BoundaryCelebration";
 import { WicketPresentation } from "./hud/WicketPresentation";
@@ -91,7 +92,15 @@ export default function GameCanvas() {
             <DeliveryPanel live={live} telemetry={telemetry} />
             <FieldRadar live={live} />
             <ShotMeter live={live} balls={telemetry.match.ballsThisOver} />
-            <ScorePlate match={telemetry.match} live={live} team={telemetry.mode === "bowling" ? "IND · AI" : "IND"} />
+            <ShotIntent live={live} />
+            <ScorePlate
+              match={telemetry.match}
+              live={live}
+              team={telemetry.mode === "bowling" ? "IND · AI" : "IND"}
+              // Whoever is batting is chasing something, so the strip can ask
+              // for a required rate in either mode.
+              chase={telemetry.mode === "bowling" ? telemetry.bowling : telemetry.challenge}
+            />
             {telemetry.mode === "batting"
               ? <ChallengePanel telemetry={telemetry} select={(level) => gameRef.current?.selectLevel(level)} bowl={() => gameRef.current?.bowl()} menu={() => gameRef.current?.showLevelSelect()} bowling={() => gameRef.current?.startBowling()} />
               : <BowlingPanel live={live} telemetry={telemetry} selectBowler={(i) => gameRef.current?.selectPlayerBowler(i)} pace={(value) => gameRef.current?.setPlayerPace(value)} bowl={() => gameRef.current?.bowl()} retry={() => gameRef.current?.startBowling()} menu={() => gameRef.current?.showLevelSelect()} nextOver={() => gameRef.current?.confirmBowlerChange()} />}
@@ -109,10 +118,18 @@ export default function GameCanvas() {
           {/* Controls, shown between deliveries so they never cover the ball. */}
           {telemetry.phase === "idle" && (
             <div className="hud-plate broadcast-controls pointer-events-none absolute right-4 p-3 text-xs">
-              <div className="mb-1.5 tracking-[0.16em] text-[var(--hud-muted)]">CONTROLS</div>
+              <div className="mb-1.5 tracking-[0.16em] text-[var(--hud-muted)]">CRICKET 07 CONTROLS</div>
               <table className="tabular">
                 <tbody>
                   {(telemetry.mode === "bowling" ? BOWLING_CONTROL_HELP : CONTROL_HELP).map((c) => (
+                    <tr key={c.action}>
+                      <td className="pr-3 text-[var(--hud-green)]">{c.keys}</td>
+                      <td className="text-[var(--hud-muted)]">{c.action}</td>
+                    </tr>
+                  ))}
+                  {/* Ours, not the original's: kept visibly apart. */}
+                  <tr><td colSpan={2} className="pt-2 text-[var(--hud-muted)] opacity-60">— this build —</td></tr>
+                  {EXTRA_CONTROL_HELP.map((c) => (
                     <tr key={c.action}>
                       <td className="pr-3 text-[var(--hud-green)]">{c.keys}</td>
                       <td className="text-[var(--hud-muted)]">{c.action}</td>

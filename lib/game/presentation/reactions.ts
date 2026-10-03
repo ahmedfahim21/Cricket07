@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { BATTING_KIT, FIELDING_KIT, makePlayer, RIG_SCALE, type PlayerRig } from "../assets/kit";
+import type { RosterPlayer } from "../roster/squads";
 import { applyPose, batChannels, batQuaternion, jointPoint, makePose, setPose } from "../anim/pose";
 import { advancePhase, gaitPose, idlePose } from "../anim/locomotion";
 import { faceYaw } from "../anim/fielder";
@@ -30,6 +31,23 @@ export class ReactionScene {
     this.group.name = "broadcast-reactions";
     this.group.visible = false;
     this.group.add(...[...this.fielders, ...this.batsmen].map((rig) => rig.root));
+  }
+
+  /**
+   * Dress the doubles as the people on the field, so a cutaway shows the same
+   * faces: the bowler, the keeper in the keeper's double, the rest of the
+   * field, and the two batsmen. Without this they are bare skeletons, which
+   * is all the tests need.
+   */
+  cast(bowler: RosterPlayer, field: RosterPlayer[], batsmen: RosterPlayer[], wear: (rig: PlayerRig, p: RosterPlayer) => void): void {
+    const [keeper, ...others] = field;
+    wear(this.fielders[0], bowler);
+    wear(this.fielders[3], keeper);
+    let k = 0;
+    this.fielders.forEach((rig, i) => {
+      if (i !== 0 && i !== 3) wear(rig, others[k++]);
+    });
+    this.batsmen.forEach((rig, i) => wear(rig, batsmen[i]));
   }
 
   /** Stage one cutaway from elapsed engine time; repeated renders are deterministic. */

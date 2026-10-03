@@ -88,7 +88,11 @@ export function ShotMeter({ live, balls }: { live: LiveState | null; balls: numb
       ctx.fillStyle = "#f2e7ad";
       ctx.shadowColor = "#000";
       ctx.shadowBlur = 4;
-      const label = bowling ? "DELIVERY PACE" : live?.lastBand ? live.shotFeedback.toUpperCase()
+      // Any feedback the engine has set wins, not just a struck ball's band:
+      // leaving one sets feedback and no band, and used to leave the meter
+      // still saying "TIME YOUR SHOT" with the bat already withdrawn.
+      const label = bowling ? "DELIVERY PACE"
+        : live?.shotFeedback ? live.shotFeedback.toUpperCase()
         : error !== null && Math.abs(error) <= goodWindow ? "HIT NOW" : "TIME YOUR SHOT";
       ctx.fillText(label, 20, 244);
       ctx.shadowBlur = 0;

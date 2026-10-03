@@ -45,6 +45,7 @@ import {
   sweetSpot,
 } from "./pose";
 import { Track, type Key } from "./track";
+import { DEFAULT_BATTING, type BattingStyle } from "./style";
 
 const G = SKELETON.ankleH;
 
@@ -91,11 +92,23 @@ const _ey = new THREE.Vector3(0, 1, 0);
 const STANCE_Q = batQuaternion(0.55, 0, 0.12);
 const STANCE_TOE = new THREE.Vector3(0.06, 0.03, -0.32);
 
-/** Top of the backlift: hands by the back hip, toe up behind toward the keeper. */
-// Toe well up toward the sky, not flat behind: a flat backlift has nowhere
-// to swing down from.
-const LIFT_Q = batQuaternion(1.3, 0.05, -2.6);
-const LIFT_GRIP = new THREE.Vector3(0.12, 1.18, -0.14);
+/**
+ * Top of the backlift: hands by the back hip, toe up behind toward the keeper
+ * — well up toward the sky, not flat behind: a flat backlift has nowhere to
+ * swing down from. A high backlift lifts the hands and the toe further; a
+ * wide one ("from gully") opens the face and carries the hands toward off.
+ */
+function liftOf(style: BattingStyle): { q: THREE.Quaternion; grip: THREE.Vector3 } {
+  const high = style.backlift - 1;
+  const arc = style.backliftArc;
+  return {
+    q: batQuaternion(1.3 + 0.45 * arc, 0.05, -2.6 - 0.9 * high),
+    grip: new THREE.Vector3(0.12 - 0.03 * arc, 1.18 + 0.22 * high, -0.14 - 0.1 * arc),
+  };
+}
+
+/** Where the bat is held up, off the turf, by a batsman with a raised guard (0..1 of the way to the backlift). */
+const RAISED_GUARD = 0.55;
 
 export interface ReadyState {
   /** Wall-clock seconds, for breathing and the bat tap. */
@@ -115,53 +128,72 @@ export interface ReadyState {
  * blend of four ingredients, so any combination of backlift, footwork and
  * trigger is a valid pose and none of them pops when another starts.
  */
-export function readyBatPose(out: Pose, s: ReadyState): Pose {
+export function readyBatPose(out: Pose, s: ReadyState, style: BattingStyle = DEFAULT_BATTING): Pose {
   out.fill(0);
   const breath = Math.sin(s.time * 1.4);
-  const lift = smooth(s.lift);
+  // A raised guard starts part-way up: the bat never rests on the turf.
+  const base = style.guard === "raised" ? RAISED_GUARD : 0;
+  const lift = smooth(base + (1 - base) * s.lift);
   const fw = s.footwork;
   const fwd = Math.max(0, fw);
   const back = Math.max(0, -fw);
-  // Lift slowly, knock down briskly, then leave the toe on the turf briefly.
-  // Blend the routine away as the bowler bounds so it cannot interrupt a shot.
-  const cycle = (s.time % 1.35) / 1.35;
-  const tap = (cycle < 0.48 ? smooth(cycle / 0.48)
-    : cycle < 0.7 ? 1 - smooth((cycle - 0.48) / 0.22) : 0)
-    * 0.24 * (1 - lift) * (1 - smooth(s.trigger));
+  // Lift slowly, knock down briskly, then leave the toe on the turf briefly —
+  // a restless batsman more often and harder. Blended away as the bowler
+  // bounds so it cannot interrupt a shot.
+  const period = 1.35 * Math.sqrt(0.6 / Math.max(0.2, style.tap));
+  const cycle = (s.time % period) / period;
+  const tap = style.guard === "raised" ? 0
+    : (cycle < 0.48 ? smooth(cycle / 0.48) : cycle < 0.7 ? 1 - smooth((cycle - 0.48) / 0.22) : 0)
+      * 0.4 * style.tap * (1 - lift) * (1 - smooth(s.trigger));
+
+  // The trigger, by kind: back and across toward off stump, a press forward
+  // at the bowler, or a full shuffle across with both feet.
+  const t = s.trigger * style.triggerSize;
+  const trig = { lx: 0, lz: 0, rx: 0, rz: 0, px: 0 };
+  if (style.trigger === "back-across") Object.assign(trig, { lx: -0.03 * t, rx: 0.05 * t, rz: -0.05 * t });
+  else if (style.trigger === "forward-press") Object.assign(trig, { lx: -0.09 * t, rx: -0.02 * t, px: -0.04 * t });
+  else if (style.trigger === "shuffle") Object.assign(trig, { lx: 0.06 * t, lz: -0.06 * t, rx: 0.1 * t, rz: -0.12 * t, px: 0.05 * t });
+
+  // An open stance closes as he triggers and picks the bat up: he is side-on
+  // by the time the ball arrives, whatever he started as.
+  const open = style.openStance * (1 - 0.7 * smooth(s.trigger)) * (1 - lift);
+  const W = style.stanceWidth;
+  const crouch = style.crouch;
 
   // Feet. The front (left) foot strides toward the bowler and a little
   // toward the line of the ball; going back, the back (right) foot steps
   // back and across toward off stump and the front foot follows it in.
-  const lx = -0.24 - 0.42 * smooth(fwd) + 0.22 * smooth(back) - 0.03 * s.trigger;
-  const lz = -0.02 - 0.06 * smooth(fwd) - 0.04 * smooth(back);
+  const lx = -0.24 * W - 0.42 * smooth(fwd) + 0.22 * smooth(back) + trig.lx;
+  const lz = -0.02 - 0.06 * smooth(fwd) - 0.04 * smooth(back) + 0.2 * open + trig.lz;
   const ly = G + 0.11 * Math.sin(Math.PI * Math.min(1, fwd)) + 0.07 * Math.sin(Math.PI * Math.min(1, back));
-  const rx = 0.22 + 0.12 * smooth(back) + 0.05 * s.trigger;
-  const rz = 0.02 - 0.16 * smooth(back) - 0.05 * s.trigger;
+  const rx = 0.22 * W + 0.12 * smooth(back) + trig.rx;
+  const rz = 0.02 - 0.16 * smooth(back) + trig.rz;
   const ry = G + 0.08 * Math.sin(Math.PI * Math.min(1, back));
 
   setPose(out, {
-    footLX: lx, footLY: ly, footLZ: lz, footLYaw: 0.3 + 0.25 * fwd, footLW: 1,
+    footLX: lx, footLY: ly, footLZ: lz, footLYaw: 0.3 + 0.25 * fwd + 0.5 * open, footLW: 1,
     footRX: rx, footRY: ry, footRZ: rz, footRYaw: -0.05, footRPitch: -0.25 * fwd, footRW: 1,
     // Weight moves over the foot that has moved.
-    pelvisX: -0.2 * smooth(fwd) + 0.13 * smooth(back),
-    pelvisY: -0.07 - 0.05 * fwd + 0.03 * back + breath * 0.004,
-    pelvisPitch: 0.12 + 0.06 * fwd,
-    pelvisYaw: 0.05 * fwd,
-    torsoPitch: 0.28 + 0.12 * fwd - 0.1 * back - 0.06 * lift - tap * 0.18,
-    torsoYaw: -0.05 * lift,
+    pelvisX: -0.2 * smooth(fwd) + 0.13 * smooth(back) + trig.px,
+    pelvisY: -0.034 - 0.12 * crouch - 0.05 * fwd + 0.03 * back + breath * 0.004,
+    pelvisPitch: 0.081 + 0.13 * crouch + 0.06 * fwd,
+    pelvisYaw: 0.05 * fwd + 0.5 * open,
+    torsoPitch: 0.205 + 0.25 * crouch + 0.12 * fwd - 0.1 * back - 0.06 * lift - tap * 0.18,
+    torsoYaw: -0.05 * lift + 0.3 * open,
     lookX: s.look.x, lookY: s.look.y, lookZ: s.look.z, lookW: 1,
   });
 
-  // Bat: grounded (with a tap every couple of seconds while waiting) to the
-  // top of the backlift, along an arc that goes up before it goes back.
+  // Bat: grounded (with the tap) or held up, to the top of the backlift,
+  // along an arc that goes up before it goes back.
   const toe = STANCE_TOE.clone();
   toe.y += tap;
   const stanceGrip = gripForToe(toe, STANCE_Q);
+  const top = liftOf(style);
   // Hands move with the pelvis when the batsman steps.
   const shift = new THREE.Vector3(out[C.pelvisX], 0, 0);
-  const grip = stanceGrip.clone().lerp(LIFT_GRIP, lift).add(shift);
+  const grip = stanceGrip.clone().lerp(top.grip, lift).add(shift);
   grip.y += Math.sin(Math.PI * lift) * 0.08;
-  setPose(out, batChannels(grip, STANCE_Q.clone().slerp(LIFT_Q, lift)));
+  setPose(out, batChannels(grip, STANCE_Q.clone().slerp(top.q, lift)));
   return out;
 }
 
@@ -211,7 +243,11 @@ export function shotShape(plan: ShotPlan): ShotShape {
  * finish (held). Catmull-Rom tangents keep the bat moving fastest through
  * contact rather than easing into it.
  */
-export function shotKeys(from: Pose, plan: ShotPlan): { keys: Key[]; contactT: number; shape: ShotShape } {
+export function shotKeys(
+  from: Pose,
+  plan: ShotPlan,
+  style: BattingStyle = DEFAULT_BATTING
+): { keys: Key[]; contactT: number; shape: ShotShape } {
   const shape = shotShape(plan);
   if (shape === "sweep" || shape === "slog-sweep" || shape === "scoop") return sweepKeys(from, plan, shape);
   const d = exitVector(plan.exitDirection);
@@ -369,6 +405,13 @@ export function shotKeys(from: Pose, plan: ShotPlan): { keys: Key[]; contactT: n
     default:
       followGrip = new THREE.Vector3(-0.28, 1.38, -0.18);
       qFollow = batQuaternion(yaw, 0, 2.35);
+  }
+
+  // A checked finish stops the bat a third of the way into the follow-through
+  // and holds it there, rather than flowing on over the shoulder.
+  if (style.finish === "checked" && shape !== "defence") {
+    followGrip = gripAfter.clone().lerp(followGrip, 0.35);
+    qFollow = qAfter.clone().slerp(qFollow, 0.35);
   }
 
   const tMid = Tc * 0.58;
@@ -544,6 +587,8 @@ export type BatsmanState = "ready" | "shot" | "leave" | "recover";
 
 export class BatsmanAnimator {
   readonly pose = makePose();
+  /** How this batsman stands, triggers, picks the bat up and finishes. */
+  style: BattingStyle = DEFAULT_BATTING;
   state: BatsmanState = "ready";
   /** The live ball (or the bowler before release), root space. */
   readonly look = new THREE.Vector3(-18, 1.8, 0);
@@ -586,7 +631,7 @@ export class BatsmanAnimator {
    * first — see `fitToBall` — so the bat's middle really arrives on the ball.
    */
   play(plan: ShotPlan, rig?: PlayerRig): ShotShape {
-    const { keys, contactT, shape } = shotKeys(this.pose, plan);
+    const { keys, contactT, shape } = shotKeys(this.pose, plan, this.style);
     if (rig) fitToBall(rig, keys, contactT, plan.contact);
     this.track = new Track(keys);
     this.contactT = contactT;
@@ -645,7 +690,7 @@ export class BatsmanAnimator {
 
     switch (this.state) {
       case "ready":
-        readyBatPose(this.pose, rs);
+        readyBatPose(this.pose, rs, this.style);
         break;
       case "shot":
       case "leave":
@@ -658,7 +703,7 @@ export class BatsmanAnimator {
         break;
       case "recover": {
         this.recoverT += dt;
-        readyBatPose(this.scratch, rs);
+        readyBatPose(this.scratch, rs, this.style);
         const k = smooth(this.recoverT / 0.7);
         for (let i = 0; i < this.pose.length; i++) {
           this.pose[i] = this.recoverFrom[i] + (this.scratch[i] - this.recoverFrom[i]) * k;

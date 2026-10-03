@@ -27,8 +27,13 @@ try {
   await page.evaluate(() => {
     const g = window.__game;
     cancelAnimationFrame(g.raf);
-    window.__playBall = ({ shot = "KeyC", error = -0.02, aim = null, move = null } = {}) => {
+    // Cricket 07 batting: S is the stroke, and what is held at the press decides
+    // which stroke it is. Tests name the stroke; the keys follow from that.
+    window.__SHOT_KEYS = { ground: [], lofted: ["ShiftLeft"], defensive: ["ArrowUp"] };
+    window.__playBall = ({ shot = "lofted", error = -0.02, aim = null, move = null } = {}) => {
       const key = (code, down = true) => window.dispatchEvent(new KeyboardEvent(down ? "keydown" : "keyup", { code, bubbles: true }));
+      const modifiers = shot ? window.__SHOT_KEYS[shot] : [];
+      if (!modifiers) throw new Error(`unknown shot ${shot}`);
       g.bowl();
       let pressed = false;
       let band = null;
@@ -47,7 +52,10 @@ try {
       for (let frame = 0; frame < 2400; frame++) {
         if (g.phase === "flight" && !pressed && shot && g.live.timingError !== null && g.live.timingError >= error) {
           meterError = g.live.timingError;
-          key(shot); pressed = true;
+          // Modifiers must be down BEFORE the stroke key: the type is read off
+          // what is held at the instant of the press, not on the next poll.
+          for (const code of modifiers) key(code);
+          key("KeyS"); pressed = true;
         }
         g.update(1 / 60);
         if (g.live.boundaryRuns !== null) {
@@ -57,7 +65,7 @@ try {
           }
           umpireCutSeen ||= g.boundaryCameraActive;
         }
-        if (shot) key(shot, false);
+        if (shot) { key("KeyS", false); for (const code of modifiers) key(code, false); }
         markerSeen ||= g.marker.visible;
         // Locking can precede the batting cue's reveal; sample its rendered position only once visible.
         if (g.markerLocked && g.marker.visible && g.markerPoint && !marker) marker = g.marker.position.clone();
@@ -70,7 +78,9 @@ try {
       }
       if (aim) key(aim, false);
       if (move) key(move, false);
-      return { band, meterError, style: g.style, score: g.match.runs, wickets: g.match.wickets, event: g.lastEvent, bounceError, markerSeen, markerStable, frozen, releasePosition: releasePosition?.toArray(), timeline: [...g.match.timeline], celebrationRuns, immediateCelebration, umpireCutSeen, celebrationCleared: g.live.boundaryRuns === null };
+      return { band, meterError, style: g.style, score: g.match.runs, wickets: g.match.wickets, event: g.lastEvent, bounceError, markerSeen, markerStable, frozen, releasePosition: releasePosition?.toArray(), timeline: [...g.match.timeline], celebrationRuns, immediateCelebration, umpireCutSeen, celebrationCleared: g.live.boundaryRuns === null,
+        bowlers: structuredClone(g.match.bowlers), partnership: { ...g.match.partnership }, thisOver: [...g.match.thisOver],
+        extras: g.match.extras, overs: g.match.overs, ballsThisOver: g.match.ballsThisOver };
     };
   });
   const report = await page.evaluate(() => {
@@ -83,6 +93,24 @@ try {
     return { deliveries, complete: g.match.complete, unlocked: g.progress.unlocked };
   });
   console.log("Opening chase:", report.deliveries.map((d) => d.event).join(", "));
+  {
+    // In-match figures must be derivable from the balls that were actually
+    // bowled, not merely plausible: the scorebook is the only authority.
+    const last = report.deliveries.at(-1);
+    const bowled = last.overs * 6 + last.ballsThisOver;
+    const charged = last.bowlers.reduce((n, b) => n + b.runs, 0);
+    const balls = last.bowlers.reduce((n, b) => n + b.balls, 0);
+    const wickets = last.bowlers.reduce((n, b) => n + b.wickets, 0);
+    console.log("Figures:", last.bowlers.map((b) => `${b.name} ${b.balls}b ${b.runs}r ${b.wickets}w ${b.maidens}m`).join("; "),
+      `| p'ship ${last.partnership.runs} (${last.partnership.balls}) | this over ${last.thisOver.join(" ")}`);
+    assert.ok(last.bowlers.length > 0, "every delivery must be charged to a bowler");
+    assert.equal(balls, bowled, "a bowler's legal balls must match the over count");
+    assert.equal(last.partnership.balls, bowled, "an unbroken partnership has faced every legal ball");
+    assert.equal(last.partnership.runs, last.score, "an unbroken opening partnership is the whole score");
+    assert.equal(last.thisOver.length, last.ballsThisOver, "no extras were bowled, so the over's reading is its ball count");
+    assert.equal(charged, last.score - last.extras, "runs charged must be the score less the extras nobody bowled");
+    assert.ok(wickets <= last.wickets, "a bowler can never be credited more wickets than fell");
+  }
   assert.equal(report.unlocked, 1, "timed lofts should win level one through the real engine");
   await page.getByRole("heading", { name: "Chase complete!" }).waitFor();
   await page.screenshot({ path: "/private/tmp/cricket-result.png" });
@@ -113,7 +141,7 @@ try {
     const cases = [];
     for (const level of [0, 2]) {
       for (const error of [-0.02, -0.10]) {
-        for (const shot of ["KeyX", "KeyC", "KeyZ"]) {
+        for (const shot of ["ground", "lofted", "defensive"]) {
           g.selectLevel(level);
           cases.push({ level, error, shot, ...window.__playBall({ shot, error }) });
         }
@@ -123,15 +151,51 @@ try {
   });
   console.log("Shots:", shots.map((s) => `${s.style} ${s.shot} ${s.band}: ${s.event}`).join("; "));
   for (const shot of shots) {
-    if (shot.shot === "KeyC") assert.equal(shot.event, "SIX", `${shot.style} loft should clear rope`);
-    if (shot.shot === "KeyZ") assert.ok(shot.score < 4, "defence should remain soft");
+    if (shot.shot === "lofted") assert.equal(shot.event, "SIX", `${shot.style} loft should clear rope`);
+    if (shot.shot === "defensive") assert.ok(shot.score < 4, "defence should remain soft");
   }
-  assert.ok(shots.some((shot) => shot.shot === "KeyX" && shot.event === "FOUR"), "ground shots should reach gaps");
+  assert.ok(shots.some((shot) => shot.shot === "ground" && shot.event === "FOUR"), "ground shots should reach gaps");
+  // The batting modifiers are all invisible on their own; the readout is the
+  // only confirmation they registered, so it has to track them exactly.
+  const readout = await page.evaluate(() => {
+    const key = (code, down) => window.dispatchEvent(new KeyboardEvent(down ? "keydown" : "keyup", { code }));
+    const g = window.__game;
+    const seen = [];
+    g.selectLevel(0); g.bowl();
+    const held = ["ShiftLeft", "ArrowRight", "KeyD"];
+    for (const code of held) key(code, true);
+    for (let i = 0; i < 60 && g.phase === "runup"; i++) g.update(1 / 60);
+    seen.push({ at: "runup", ...structuredClone(g.live.intent), z: g.strikerRoot.z });
+    for (const code of held) key(code, false);
+
+    // A tapped during the approach must still be leaving once the ball is bowled.
+    key("KeyA", true);
+    g.update(1 / 60);
+    key("KeyA", false);
+    const armed = g.leaveArmed;
+    for (let i = 0; i < 2400 && g.phase === "runup"; i++) g.update(1 / 60);
+    for (let i = 0; i < 30 && g.phase === "flight"; i++) g.update(1 / 60);
+    seen.push({ at: "flight", ...structuredClone(g.live.intent), leaving: g.leaving, feedback: g.live.shotFeedback });
+    for (let i = 0; i < 2400 && g.phase !== "idle"; i++) g.update(1 / 60);
+    return { seen, armed, cleared: structuredClone(g.live.intent) };
+  });
+  console.log("Readout:", JSON.stringify(readout.seen));
+  {
+    const [runup, flight] = readout.seen;
+    assert.ok(runup.shot === "lofted" && runup.square && runup.aim === 1 && runup.advance,
+      "the readout must light every modifier being held during the approach");
+    assert.ok(runup.z > -9.2, "D must actually walk him down the wicket");
+    assert.ok(readout.armed, "leaving decided during the approach must stick");
+    assert.ok(flight.leave && flight.leaving && flight.feedback === "Left alone",
+      "a leave tapped in the run-up must fire, and say so");
+    assert.ok(!readout.cleared.leave && !readout.cleared.advance, "the readout must reset with the delivery");
+  }
+
   const movement = await page.evaluate(() => {
     const g = window.__game;
     const result = [];
     for (const camera of ["batting", "tv"]) {
-      for (const move of ["KeyA", "KeyD", "KeyW", "KeyS"]) {
+      for (const move of ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"]) {
         g.cameraMode = camera;
         g.selectLevel(0);
         result.push({ camera, move, ...window.__playBall({ move }) });
@@ -141,12 +205,12 @@ try {
     return result;
   });
   for (const move of movement) {
-    assert.ok(move.frozen, "position must freeze at release even with WASD held");
+    assert.ok(move.frozen, "position must freeze at release even with an arrow held");
     const [x, , z] = move.releasePosition;
-    if (move.move === "KeyW") assert.ok(Math.abs(z - (-10.06 + 0.95 + 0.6)) < 1e-6);
-    if (move.move === "KeyS") assert.ok(Math.abs(z - (-10.06 + 0.95 - 0.3)) < 1e-6);
-    if (move.move === "KeyA") assert.ok(move.camera === "batting" ? x > 0.35 : x < 0.35);
-    if (move.move === "KeyD") assert.ok(move.camera === "batting" ? x < 0.35 : x > 0.35);
+    if (move.move === "ArrowUp") assert.ok(Math.abs(z - (-10.06 + 0.95 + 0.6)) < 1e-6);
+    if (move.move === "ArrowDown") assert.ok(Math.abs(z - (-10.06 + 0.95 - 0.3)) < 1e-6);
+    if (move.move === "ArrowLeft") assert.ok(move.camera === "batting" ? x > 0.35 : x < 0.35);
+    if (move.move === "ArrowRight") assert.ok(move.camera === "batting" ? x < 0.35 : x > 0.35);
   }
   const failure = await page.evaluate(() => {
     const g = window.__game;
@@ -167,16 +231,17 @@ try {
   for (const runs of [4, 6]) {
     const found = await page.evaluate((wanted) => {
       const g = window.__game;
-      const shot = wanted === 4 ? "KeyX" : "KeyC";
+      const modifiers = wanted === 4 ? [] : ["ShiftLeft"];
       for (let attempt = 0; attempt < 12; attempt++) {
         g.selectLevel(0); g.bowl();
         let pressed = false;
         for (let frame = 0; frame < 2400; frame++) {
           if (!pressed && g.phase === "flight" && g.live.timingError !== null && g.live.timingError >= -0.02) {
-            window.dispatchEvent(new KeyboardEvent("keydown", { code: shot })); pressed = true;
+            for (const code of modifiers) window.dispatchEvent(new KeyboardEvent("keydown", { code }));
+            window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyS" })); pressed = true;
           }
           g.update(1 / 60);
-          window.dispatchEvent(new KeyboardEvent("keyup", { code: shot }));
+          for (const code of ["KeyS", ...modifiers]) window.dispatchEvent(new KeyboardEvent("keyup", { code }));
           if (g.live.boundaryRuns === wanted) {
             g.pipeline.render(1 / 60); g.emitTelemetry(999);
             return g.live.celebrationTime === 0 && !g.boundaryCameraActive;
@@ -227,7 +292,7 @@ try {
     const g = window.__game;
     for (let attempt = 0; attempt < 20; attempt++) {
       g.selectLevel(0);
-      window.__playBall({ shot: "KeyX" });
+      window.__playBall({ shot: "ground" });
       if (g.match.complete) continue;
       g.bowl();
       for (let frame = 0; frame < 2400; frame++) {
@@ -321,16 +386,16 @@ try {
   await page.getByRole("slider", { name: "Delivery pace", exact: true }).fill("45");
   await page.screenshot({ path: "/private/tmp/cricket-bowling-setup.png" });
   await page.evaluate(() => cancelAnimationFrame(window.__game.raf));
-  await page.getByRole("button", { name: "Start bowling · R" }).click();
+  await page.getByRole("button", { name: "Start bowling · Space" }).click();
   await page.keyboard.down("ArrowRight");
-  await page.keyboard.down("KeyW");
+  await page.keyboard.down("ArrowUp");
   const aiming = await page.evaluate(() => {
     const g = window.__game;
     for (let i = 0; i < 28; i++) g.update(1 / 60);
     g.pipeline.render(1 / 60); g.emitTelemetry(999);
     return { aim: structuredClone(g.bowlingAim), unlocked: !g.markerLocked, visible: g.marker.visible };
   });
-  await page.keyboard.up("ArrowRight"); await page.keyboard.up("KeyW");
+  await page.keyboard.up("ArrowRight"); await page.keyboard.up("ArrowUp");
   assert.ok(aiming.unlocked && aiming.visible && aiming.aim.line > -0.12 && aiming.aim.length < 5);
   await page.screenshot({ path: "/private/tmp/cricket-bowling-aim.png" });
   await page.keyboard.press("Space");
@@ -372,9 +437,9 @@ try {
           if (manualLock) key("Space", true);
         }
         if (frame === moveFrames + 1) key("Space", false);
-        if (spamBat && frame % 10 === 0) key("KeyC", true);
+        if (spamBat && frame % 10 === 0) key("KeyS", true);
         g.update(1 / 60);
-        if (spamBat) key("KeyC", false);
+        if (spamBat) key("KeyS", false);
         markerSeen ||= g.marker.visible;
         if (g.markerLocked && !locked) {
           locked = { aim: structuredClone(g.bowlingAim), marker: g.marker.position.clone(), plan: structuredClone(g.plan) };
@@ -396,7 +461,7 @@ try {
       }
       if (move) key(move, false);
       if (pace) key(pace, false);
-      key("Space", false); key("KeyC", false);
+      key("Space", false); key("KeyS", false);
       return { markerSeen, stable, error, locked: locked?.aim, releaseSpeed, struck, decision, wicketCut, impact: g.live.moment?.kind === "wicket",
         idle: g.phase === "idle", consumedFrames, event: g.lastEvent, before, after: structuredClone(g.match) };
     };
@@ -407,8 +472,8 @@ try {
     const reports = [];
     for (let bowler = 0; bowler < 4; bowler++) {
       g.startBowling(); g.selectPlayerBowler(bowler);
-      reports.push(window.__bowlPlayer({ move: "ArrowUp", pace: "KeyQ", manualLock: true }));
-      reports.push(window.__bowlPlayer({ move: "ArrowDown", pace: "KeyE", spamBat: true }));
+      reports.push(window.__bowlPlayer({ move: "ArrowUp", pace: "KeyS", manualLock: true }));
+      reports.push(window.__bowlPlayer({ move: "ArrowDown", pace: "KeyW", spamBat: true }));
     }
     const unchanged = JSON.stringify(g.progress) === saved;
     g.emitTelemetry(999);

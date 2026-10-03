@@ -9,7 +9,10 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "preview:assets": "node lib/game/assets/preview.mjs",
-    "preview:motion": "node lib/game/assets/preview.mjs --motion"
+    "preview:motion": "node lib/game/assets/preview.mjs --motion",
+    "build:players": "node tools/players/build.mjs",
+    "build:rocketbox": "node tools/players/build.mjs rocketbox",
+    "fetch:rocketbox": "node tools/players/rocketbox/fetch.mjs"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
