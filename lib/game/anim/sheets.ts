@@ -9,6 +9,7 @@
  * a number.
  */
 
+import { BATTING_STYLES, BOWLING_STYLES, styledApproach } from "./style";
 import type { BodyLibrary } from "../assets/bodies";
 import { dressAs, sampleFor } from "../roster/cast";
 import * as THREE from "three";
@@ -21,7 +22,7 @@ import {
   type KitColours,
 } from "../assets/kit";
 import { C, GRIP_GAP, GRIP_TOP, Pose, applyPose, jointPoint, makePose, solePoint, sweetSpot } from "./pose";
-import { BatsmanAnimator, type ShotPlan } from "./batsman";
+import { BatsmanAnimator, readyBatPose, type ShotPlan } from "./batsman";
 import { FielderAnimator, keeperCrouch, pickupKeys, throwKeys } from "./fielder";
 import { Track } from "./track";
 import type { Footwork, ShotType } from "../input/bindings";
@@ -442,11 +443,87 @@ function fieldingSheet(): MotionSheet {
   return { name: "fielding", rows };
 }
 
+/**
+ * Every batting style side by side: stance, trigger and the top of the
+ * backlift from point, then stance and backlift from the bowler's end.
+ */
+function battingStylesSheet(): MotionSheet {
+  const rows: MotionRow[] = [];
+  const look = new THREE.Vector3(-18, 1.8, 0);
+  for (const [name, style] of Object.entries(BATTING_STYLES)) {
+    const at = (trigger: number, lift: number) =>
+      readyBatPose(makePose(), { time: 0.3, footwork: 0, lift, trigger, look }, style);
+    rows.push({
+      label: `${name}`,
+      frames: [
+        posedFrame("batsman", BATTING_KIT, at(0, 0), FRONT, "stance"),
+        posedFrame("batsman", BATTING_KIT, at(1, 0), FRONT, "trigger"),
+        posedFrame("batsman", BATTING_KIT, at(1, 1), FRONT, "backlift"),
+        posedFrame("batsman", BATTING_KIT, at(0, 0), Math.PI / 2, "stance, bowler"),
+        posedFrame("batsman", BATTING_KIT, at(1, 1), Math.PI / 2, "backlift, bowler"),
+      ],
+    });
+  }
+  return { name: "styles-batting", rows };
+}
+
+/**
+ * Every bowling style through the stride — coil, back-foot contact, front-foot
+ * contact, release, follow-through — from the side, and at release from
+ * behind. Spinners' styles are shown bowling spin.
+ */
+function bowlingStylesSheet(): MotionSheet {
+  const rows: MotionRow[] = [];
+  const metrics: Record<string, number | string> = {};
+  const stumps = new THREE.Vector3(0, 0.6, STRIKER_STUMPS_Z);
+  const picks = [0.3, 0.44, 0.58, 0.66, 0.78, 0.95];
+  const labels = ["coil", "back foot", "front foot", "release", "follow", "through"];
+  for (const [name, style] of Object.entries(BOWLING_STYLES)) {
+    const type: keyof typeof APPROACH = name === "loopy" || name === "darting" ? "off-spin" : "fast-medium";
+    const approach = styledApproach(APPROACH[type], style);
+    const originZ = deliveryOrigin(approach, CREASE_Z - POPPING_CREASE_OFFSET + 0.2);
+    const b = new BowlerAnimator(makePlayer({ role: "bowler", colours: FIELDING_KIT }));
+    b.setup(approach, originZ, -0.45 + style.crease, stumps, style);
+    let hand: THREE.Vector3 | null = null;
+    b.onRelease = (h) => {
+      hand = h.clone();
+    };
+    const tm = frontFootTime(approach) / 0.58;
+    const caps: Capture[] = [];
+    let strideT = 0;
+    let clock = 0;
+    b.startRunup();
+    while (clock < 40 && b.state !== "settle" && caps.length < picks.length) {
+      b.update(1 / 240);
+      clock += 1 / 240;
+      if (b.state !== "delivery") continue;
+      strideT += 1 / 240;
+      const k = caps.length;
+      if (strideT >= picks[k] * tm) caps.push({ pose: b.pose.slice() as Pose, t: strideT, label: labels[k] });
+    }
+    const frames = caps.map((c) => {
+      const f = posedFrame("bowler", FIELDING_KIT, c.pose, SIDE, c.label);
+      f.dx = c.pose[C.pelvisZ] * RIG_SCALE;
+      return f;
+    });
+    frames.push(posedFrame("bowler", FIELDING_KIT, caps[1].pose, 0, "back foot, behind"));
+    frames.push(posedFrame("bowler", FIELDING_KIT, caps[3].pose, 0, "release, behind"));
+    rows.push({ label: `${name} (${type})`, frames });
+    const h = hand as THREE.Vector3 | null;
+    if (h) {
+      metrics[`${name}_releaseHeight`] = +h.y.toFixed(3);
+      metrics[`${name}_releaseX`] = +h.x.toFixed(3);
+    }
+    metrics[`${name}_secondsToRelease`] = +clock.toFixed(2);
+  }
+  return { name: "styles-bowling", rows, metrics };
+}
+
 export async function motionSheets(bodies: BodyLibrary): Promise<MotionSheet[]> {
   sheetBodies = bodies;
   const batting: MotionSheet[] = [];
   for (let i = 0; i < SHOTS.length; i += 2) {
     batting.push(battingSheet(SHOTS.slice(i, i + 2), `batting-${i / 2 + 1}`));
   }
-  return [locomotionSheet(), bowlingSheet("fast-medium"), ...batting, fieldingSheet()];
+  return [locomotionSheet(), bowlingSheet("fast-medium"), ...batting, fieldingSheet(), battingStylesSheet(), bowlingStylesSheet()];
 }
