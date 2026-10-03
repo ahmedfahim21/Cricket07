@@ -56,6 +56,7 @@ import { BattingController } from "./input/controller";
 import type { BattingIntent, Footwork, ShotType } from "./input/bindings";
 import { C, applyPose, copyPose, makePose, sweetSpot } from "./anim/pose";
 import { APPROACH, BowlerAnimator, deliveryOrigin, simulateRelease } from "./anim/bowler";
+import { battingStyle, bowlingStyle, styledApproach } from "./anim/style";
 import { BatsmanAnimator, CONTACT_X } from "./anim/batsman";
 import { FielderAnimator, JOG, SPRINT, faceYaw } from "./anim/fielder";
 import { RunnerAnimator } from "./anim/runner";
@@ -278,7 +279,8 @@ export class Game {
   private markerPoint: THREE.Vector3 | null = null;
   private markerLocked = false;
   private markerFade = 0;
-  private previewRelease = new Map<BowlerStyle, THREE.Vector3>();
+  /** Release points from a dry run of each bowler's action, keyed by bowler and type. */
+  private previewRelease = new Map<string, THREE.Vector3>();
   private bounceZ: number | null = null;
   private strikerRoot = STRIKER_ROOT.clone();
   private shuffleTime = 0;
@@ -560,7 +562,6 @@ export class Game {
     const other = this.batsmen.find((b) => b !== striker)!;
     other.index = this.match.nonStriker;
     striker.index = this.match.striker;
-    this.dressCast();
 
     striker.bat = new BatsmanAnimator();
     striker.mode = "bat";
@@ -569,9 +570,9 @@ export class Game {
     other.run = new RunnerAnimator(other.rig, 12);
     other.mode = "run";
     other.run.placeAt(1, NON_STRIKER_LANE);
-
-    const approach = APPROACH[this.style];
-    this.bowler.setup(approach, deliveryOrigin(approach, FRONT_FOOT_Z), BOWLER_LINE_X, STUMPS_LOOK);
+    // After the fresh animators: dressing also gives each his style.
+    this.dressCast();
+    this.setupBowler();
 
     this.umpire.place(UMPIRE_AT, 0);
     this.field.forEach((f, i) => {
@@ -653,12 +654,11 @@ export class Game {
     this.setBowlerStyle(plan.style);
     this.plan = plan;
 
-    const approach = APPROACH[this.style];
-    this.bowler.setup(approach, deliveryOrigin(approach, FRONT_FOOT_Z), BOWLER_LINE_X, STUMPS_LOOK);
-    let hand = this.previewRelease.get(this.style);
+    const b = this.setupBowler();
+    let hand = this.previewRelease.get(b.key);
     if (!hand) {
-      hand = simulateRelease(this.previewRig, approach, deliveryOrigin(approach, FRONT_FOOT_Z), BOWLER_LINE_X, STUMPS_LOOK).hand;
-      this.previewRelease.set(this.style, hand);
+      hand = simulateRelease(this.previewRig, b.approach, b.origin, b.lineX, STUMPS_LOOK, b.style).hand;
+      this.previewRelease.set(b.key, hand);
     }
     const release = buildDelivery({ ...plan, releaseX: hand.x, releaseHeight: hand.y, releaseZ: hand.z });
     const bounce = this.mode === "bowling" ? { x: this.bowlingAim.line, z: STRIKER_STUMPS_Z + this.bowlingAim.length }
@@ -696,7 +696,7 @@ export class Game {
   /** Freeze pace/target before the delivery stride and fit the real release to that spot. */
   private lockBowlingAim(): void {
     if (this.markerLocked || this.mode !== "bowling") return;
-    const hand = this.previewRelease.get(this.style);
+    const hand = this.previewRelease.get(this.bowlerSetup().key);
     if (!hand) return;
     const locked = lockPlayerDelivery(playerDelivery(BOWLERS[this.playerBowler], this.bowlingAim), hand, this.world.pitch, this.world.outfield);
     this.plan = locked.plan;
@@ -1711,9 +1711,31 @@ export class Game {
     this.style = style;
     if (this.phase === "idle" && this.world) {
       this.dressCast();
-      const approach = APPROACH[style];
-      this.bowler.setup(approach, deliveryOrigin(approach, FRONT_FOOT_Z), BOWLER_LINE_X, STUMPS_LOOK);
+      this.setupBowler();
     }
+  }
+
+  /**
+   * The current bowler's run and action: his bowling type's approach, bent by
+   * his own style — run length and speed, how wide of the crease he comes.
+   */
+  private bowlerSetup() {
+    const player = this.currentBowler();
+    const style = bowlingStyle(player.bowlingStyle);
+    const approach = styledApproach(APPROACH[this.style], style);
+    return {
+      key: `${player.name}:${this.style}`,
+      style,
+      approach,
+      origin: deliveryOrigin(approach, FRONT_FOOT_Z),
+      lineX: BOWLER_LINE_X + style.crease,
+    };
+  }
+
+  private setupBowler() {
+    const b = this.bowlerSetup();
+    this.bowler.setup(b.approach, b.origin, b.lineX, STUMPS_LOOK, b.style);
+    return b;
   }
 
   /* ---------------------------------------------------------------- *
@@ -1742,7 +1764,10 @@ export class Game {
   private dressCast(): void {
     const squad = this.battingSquad();
     const batters = this.batsmen.map((b) => playerNamed(squad, this.match.batsmen[b.index].name));
-    this.batsmen.forEach((b, i) => this.wear(b.rig, batters[i]));
+    this.batsmen.forEach((b, i) => {
+      this.wear(b.rig, batters[i]);
+      b.bat.style = battingStyle(batters[i].batting);
+    });
     const bowler = this.currentBowler();
     this.wear(this.bowler.rig, bowler);
     const field = fieldersFor(FIELDING, bowler, this.fielders.length);

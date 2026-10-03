@@ -1,3 +1,4 @@
+import { battingStyle, bowlingStyle, checkBatting, checkBowling } from "../anim/style";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -70,6 +71,17 @@ describe("the squads", () => {
       const faces = [...FIELDING.players, UMPIRE, ...batting.players].map(face);
       expect(new Set(faces).size, batting.name).toBe(faces.length);
     }
+  });
+
+  it("give every player a batting and bowling style that resolves to valid numbers", () => {
+    for (const p of everyone) {
+      expect(checkBatting(battingStyle(p.batting)), p.name).toEqual([]);
+      expect(checkBowling(bowlingStyle(p.bowlingStyle)), p.name).toEqual([]);
+    }
+    // Styles vary across a side rather than everyone moving the same way.
+    expect(new Set(HOME.players.map((p) => JSON.stringify(battingStyle(p.batting)))).size).toBeGreaterThan(4);
+    const bowlers = FIELDING.players.filter((p) => p.bowling);
+    expect(new Set(bowlers.map((p) => JSON.stringify(bowlingStyle(p.bowlingStyle)))).size).toBe(bowlers.length);
   });
 
   it("never repeat a name within a side", () => {
