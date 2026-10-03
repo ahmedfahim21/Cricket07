@@ -1,0 +1,120 @@
+{
+  "builds": [
+    {
+      "name": "south-asian-lean",
+      "file": "south-asian-lean.glb",
+      "heritage": "south-asian",
+      "physique": "lean",
+      "skin": "a8724c"
+    },
+    {
+      "name": "south-asian-athletic",
+      "file": "south-asian-athletic.glb",
+      "heritage": "south-asian",
+      "physique": "athletic",
+      "skin": "a8724c"
+    },
+    {
+      "name": "south-asian-stocky",
+      "file": "south-asian-stocky.glb",
+      "heritage": "south-asian",
+      "physique": "stocky",
+      "skin": "a8724c"
+    },
+    {
+      "name": "south-asian-veteran",
+      "file": "south-asian-veteran.glb",
+      "heritage": "south-asian",
+      "physique": "veteran",
+      "skin": "a8724c"
+    },
+    {
+      "name": "east-asian-lean",
+      "file": "east-asian-lean.glb",
+      "heritage": "east-asian",
+      "physique": "lean",
+      "skin": "d8a97f"
+    },
+    {
+      "name": "east-asian-athletic",
+      "file": "east-asian-athletic.glb",
+      "heritage": "east-asian",
+      "physique": "athletic",
+      "skin": "d8a97f"
+    },
+    {
+      "name": "east-asian-stocky",
+      "file": "east-asian-stocky.glb",
+      "heritage": "east-asian",
+      "physique": "stocky",
+      "skin": "d8a97f"
+    },
+    {
+      "name": "european-lean",
+      "file": "european-lean.glb",
+      "heritage": "european",
+      "physique": "lean",
+      "skin": "e2b394"
+    },
+    {
+      "name": "european-athletic",
+      "file": "european-athletic.glb",
+      "heritage": "european",
+      "physique": "athletic",
+      "skin": "e2b394"
+    },
+    {
+      "name": "european-stocky",
+      "file": "european-stocky.glb",
+      "heritage": "european",
+      "physique": "stocky",
+      "skin": "e2b394"
+    },
+    {
+      "name": "european-veteran",
+      "file": "european-veteran.glb",
+      "heritage": "european",
+      "physique": "veteran",
+      "skin": "e2b394"
+    },
+    {
+      "name": "african-lean",
+      "file": "african-lean.glb",
+      "heritage": "african",
+      "physique": "lean",
+      "skin": "5c3a27"
+    },
+    {
+      "name": "african-athletic",
+      "file": "african-athletic.glb",
+      "heritage": "african",
+      "physique": "athletic",
+      "skin": "5c3a27"
+    },
+    {
+      "name": "african-stocky",
+      "file": "african-stocky.glb",
+      "heritage": "african",
+      "physique": "stocky",
+      "skin": "5c3a27"
+    }
+  ],
+  "hairStyles": [
+    "bald",
+    "buzz",
+    "short",
+    "receding",
+    "neat",
+    "curly",
+    "long"
+  ],
+  "beardStyles": [
+    "none",
+    "stubble",
+    "short",
+    "full",
+    "goatee",
+    "moustache",
+    "goatee-moustache"
+  ]
+}

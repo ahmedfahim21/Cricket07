@@ -1,0 +1,325 @@
+{
+  "comment": "Bodies built by tools/players/build.py with MPFB. A roster picks a build, then colours and styles it at runtime. Macros are MPFB's 0..1 sliders; stature is not one of them, because every body is fitted to the game's one skeleton.",
+  "hairStyles": [
+    {
+      "name": "bald"
+    },
+    {
+      "name": "buzz",
+      "offset": 0.0025
+    },
+    {
+      "name": "short",
+      "offset": 0.006,
+      "crown": 0.006
+    },
+    {
+      "name": "receding",
+      "offset": 0.004,
+      "crown": 0.002,
+      "receding": true
+    },
+    {
+      "name": "neat",
+      "offset": 0.008,
+      "crown": 0.006,
+      "front": 0.01
+    },
+    {
+      "name": "curly",
+      "offset": 0.02,
+      "crown": 0.016,
+      "noise": 0.014
+    },
+    {
+      "name": "long",
+      "offset": 0.01,
+      "crown": 0.006,
+      "nape": true
+    }
+  ],
+  "beardStyles": [
+    {
+      "name": "none"
+    },
+    {
+      "name": "stubble",
+      "offset": 0.0012
+    },
+    {
+      "name": "short",
+      "offset": 0.0035
+    },
+    {
+      "name": "full",
+      "offset": 0.009,
+      "noise": 0.004
+    },
+    {
+      "name": "goatee",
+      "offset": 0.006
+    },
+    {
+      "name": "moustache",
+      "offset": 0.004
+    },
+    {
+      "name": "goatee-moustache",
+      "offset": 0.006
+    }
+  ],
+  "builds": [
+    {
+      "name": "south-asian-lean",
+      "heritage": "south-asian",
+      "physique": "lean",
+      "skin": "a8724c",
+      "macros": {
+        "gender": 1,
+        "age": 0.42,
+        "muscle": 0.55,
+        "weight": 0.38,
+        "proportions": 0.66,
+        "race": {
+          "asian": 0.45,
+          "caucasian": 0.47,
+          "african": 0.08
+        }
+      }
+    },
+    {
+      "name": "south-asian-athletic",
+      "heritage": "south-asian",
+      "physique": "athletic",
+      "skin": "a8724c",
+      "macros": {
+        "gender": 1,
+        "age": 0.45,
+        "muscle": 0.74,
+        "weight": 0.48,
+        "proportions": 0.6,
+        "race": {
+          "asian": 0.45,
+          "caucasian": 0.47,
+          "african": 0.08
+        }
+      }
+    },
+    {
+      "name": "south-asian-stocky",
+      "heritage": "south-asian",
+      "physique": "stocky",
+      "skin": "a8724c",
+      "macros": {
+        "gender": 1,
+        "age": 0.52,
+        "muscle": 0.56,
+        "weight": 0.66,
+        "proportions": 0.44,
+        "race": {
+          "asian": 0.45,
+          "caucasian": 0.47,
+          "african": 0.08
+        }
+      }
+    },
+    {
+      "name": "south-asian-veteran",
+      "heritage": "south-asian",
+      "physique": "veteran",
+      "skin": "a8724c",
+      "macros": {
+        "gender": 1,
+        "age": 0.86,
+        "muscle": 0.35,
+        "weight": 0.72,
+        "proportions": 0.42,
+        "race": {
+          "asian": 0.45,
+          "caucasian": 0.47,
+          "african": 0.08
+        }
+      }
+    },
+    {
+      "name": "east-asian-lean",
+      "heritage": "east-asian",
+      "physique": "lean",
+      "skin": "d8a97f",
+      "macros": {
+        "gender": 1,
+        "age": 0.42,
+        "muscle": 0.55,
+        "weight": 0.38,
+        "proportions": 0.66,
+        "race": {
+          "asian": 0.85,
+          "caucasian": 0.1,
+          "african": 0.05
+        }
+      }
+    },
+    {
+      "name": "east-asian-athletic",
+      "heritage": "east-asian",
+      "physique": "athletic",
+      "skin": "d8a97f",
+      "macros": {
+        "gender": 1,
+        "age": 0.45,
+        "muscle": 0.74,
+        "weight": 0.48,
+        "proportions": 0.6,
+        "race": {
+          "asian": 0.85,
+          "caucasian": 0.1,
+          "african": 0.05
+        }
+      }
+    },
+    {
+      "name": "east-asian-stocky",
+      "heritage": "east-asian",
+      "physique": "stocky",
+      "skin": "d8a97f",
+      "macros": {
+        "gender": 1,
+        "age": 0.52,
+        "muscle": 0.56,
+        "weight": 0.66,
+        "proportions": 0.44,
+        "race": {
+          "asian": 0.85,
+          "caucasian": 0.1,
+          "african": 0.05
+        }
+      }
+    },
+    {
+      "name": "european-lean",
+      "heritage": "european",
+      "physique": "lean",
+      "skin": "e2b394",
+      "macros": {
+        "gender": 1,
+        "age": 0.42,
+        "muscle": 0.55,
+        "weight": 0.38,
+        "proportions": 0.66,
+        "race": {
+          "asian": 0.04,
+          "caucasian": 0.92,
+          "african": 0.04
+        }
+      }
+    },
+    {
+      "name": "european-athletic",
+      "heritage": "european",
+      "physique": "athletic",
+      "skin": "e2b394",
+      "macros": {
+        "gender": 1,
+        "age": 0.45,
+        "muscle": 0.74,
+        "weight": 0.48,
+        "proportions": 0.6,
+        "race": {
+          "asian": 0.04,
+          "caucasian": 0.92,
+          "african": 0.04
+        }
+      }
+    },
+    {
+      "name": "european-stocky",
+      "heritage": "european",
+      "physique": "stocky",
+      "skin": "e2b394",
+      "macros": {
+        "gender": 1,
+        "age": 0.52,
+        "muscle": 0.56,
+        "weight": 0.66,
+        "proportions": 0.44,
+        "race": {
+          "asian": 0.04,
+          "caucasian": 0.92,
+          "african": 0.04
+        }
+      }
+    },
+    {
+      "name": "european-veteran",
+      "heritage": "european",
+      "physique": "veteran",
+      "skin": "e2b394",
+      "macros": {
+        "gender": 1,
+        "age": 0.86,
+        "muscle": 0.35,
+        "weight": 0.72,
+        "proportions": 0.42,
+        "race": {
+          "asian": 0.04,
+          "caucasian": 0.92,
+          "african": 0.04
+        }
+      }
+    },
+    {
+      "name": "african-lean",
+      "heritage": "african",
+      "physique": "lean",
+      "skin": "5c3a27",
+      "macros": {
+        "gender": 1,
+        "age": 0.42,
+        "muscle": 0.55,
+        "weight": 0.38,
+        "proportions": 0.66,
+        "race": {
+          "asian": 0.04,
+          "caucasian": 0.08,
+          "african": 0.88
+        }
+      }
+    },
+    {
+      "name": "african-athletic",
+      "heritage": "african",
+      "physique": "athletic",
+      "skin": "5c3a27",
+      "macros": {
+        "gender": 1,
+        "age": 0.45,
+        "muscle": 0.74,
+        "weight": 0.48,
+        "proportions": 0.6,
+        "race": {
+          "asian": 0.04,
+          "caucasian": 0.08,
+          "african": 0.88
+        }
+      }
+    },
+    {
+      "name": "african-stocky",
+      "heritage": "african",
+      "physique": "stocky",
+      "skin": "5c3a27",
+      "macros": {
+        "gender": 1,
+        "age": 0.52,
+        "muscle": 0.56,
+        "weight": 0.66,
+        "proportions": 0.44,
+        "race": {
+          "asian": 0.04,
+          "caucasian": 0.08,
+          "african": 0.88
+        }
+      }
+    }
+  ]
+}

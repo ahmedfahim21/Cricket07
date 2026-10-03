@@ -1,15 +1,12 @@
 /**
- * Cricketers: the rig and the geometry. How they MOVE lives in `../anim/`.
+ * Cricketers: the rig, the kit, and dressing a rig as a player. How they MOVE
+ * lives in `../anim/`.
  *
- * Built the way the city engine builds its pedestrians:
- *
- *   - Every limb is a LATHE profile — a thigh swells below the hip and pinches
- *     at the knee, a calf bulges then narrows to the ankle. Straight cylinders
- *     are what make a figure read as a stack of pipes.
- *   - Every joint carries a SPHERE, which fills the wedge a bent knee or elbow
- *     opens between two segments, so limbs fold without a gap.
- *   - Static parts merge within a limb (a thigh and its trouser leg merge; the
- *     two legs never do), so each limb stays a named pivot a pose can rotate.
+ * A rig is a hierarchy of joint groups. The bodies are skinned meshes built in
+ * Blender (`bodies.ts`, `tools/players/`) and bound to these joints, so the
+ * animation poses joints and never knows what is wearing them. On top go the
+ * pieces of kit that are rigid — pads, boots, gloves, the bat, and headgear
+ * sized to the skull of whoever is in the rig.
  *
  * Cricket needs three joints the city pedestrians did not:
  *
@@ -31,6 +28,11 @@ import * as THREE from "three";
 import { PLAYER_HEIGHT } from "../dimensions";
 import { AssetMaterialLib, Part, mergeByMaterial, stdMat } from "./shared";
 import { makeBat } from "./equipment";
+import { JOINTS, type JointName } from "./joints";
+import { attachBody, type BodyTemplate, type HeadFit } from "./bodies";
+import { bodyColours, type Appearance } from "../roster/appearance";
+
+export { JOINTS, type JointName };
 
 /* ------------------------------------------------------------------ *
  * Skeleton, in metres, rig-local and unscaled
@@ -90,6 +92,9 @@ export interface PlayerRig {
   /** Batsmen only. Parented to `root` while gripped in both hands. */
   bat: THREE.Group | null;
   role: Role;
+  /** The kit this rig wears; kept so it can be re-dressed as someone else. */
+  kit: KitColours;
+  materials?: AssetMaterialLib;
 }
 
 export type KitColours = {
@@ -143,25 +148,6 @@ function place(
   return g;
 }
 
-/**
- * A lathe from a (y, radius) profile, bottom to top so the normals face out.
- * `sz` flattens it front-to-back: a thigh or a chest is not circular.
- */
-function lathe(
-  profile: [number, number][],
-  segs = 14,
-  sz = 1,
-  x = 0,
-  y = 0,
-  z = 0
-): THREE.BufferGeometry {
-  const pts = profile
-    .slice()
-    .sort((a, b) => a[0] - b[0])
-    .map(([py, r]) => new THREE.Vector2(r, py));
-  return place(new THREE.LatheGeometry(pts, segs), x, y, z, 1, 1, sz);
-}
-
 function sphere(
   r: number,
   x: number,
@@ -200,33 +186,6 @@ function group(name: string, parts: Part[], x = 0, y = 0, z = 0): THREE.Group {
   return g;
 }
 
-/**
- * Skull-and-jaw head via a lathe (chin at y=0, crown at 0.185), scaled
- * separately in width and height so a head fitted to a chin-to-crown span
- * does not come out squat.
- */
-function headLathe(widthScale: number, heightScale: number): THREE.BufferGeometry {
-  const g = lathe(
-    [
-      [0.0, 0.015],
-      [0.012, 0.055],
-      [0.02, 0.07],
-      [0.04, 0.08],
-      [0.06, 0.085],
-      [0.1, 0.09],
-      [0.125, 0.087],
-      [0.14, 0.082],
-      [0.16, 0.07],
-      [0.17, 0.055],
-      [0.18, 0.03],
-      [0.185, 0.0],
-    ],
-    20
-  );
-  g.scale(widthScale, heightScale, widthScale * 1.04);
-  return g;
-}
-
 /* ------------------------------------------------------------------ *
  * Building a player
  * ------------------------------------------------------------------ */
@@ -235,7 +194,17 @@ export interface PlayerOptions {
   colours?: KitColours;
   role?: Role;
   materials?: AssetMaterialLib;
+  /**
+   * The body to skin the rig with (see `bodies.ts`) and who is wearing it.
+   * Without them the rig is a bare skeleton carrying only its equipment —
+   * what the unit tests use, since they measure joints, not meshes.
+   */
+  body?: BodyTemplate;
+  appearance?: Appearance;
 }
+
+/** A skull of typical size, for headgear on a rig with no body. */
+const DEFAULT_HEAD: HeadFit = { centre: new THREE.Vector3(0, 0.165, -0.01), crown: 0.245, radius: 0.078 };
 
 export function makePlayer(opts: PlayerOptions = {}): PlayerRig {
   const role = opts.role ?? "fielder";
@@ -248,11 +217,6 @@ export function makePlayer(opts: PlayerOptions = {}): PlayerRig {
   const longSleeves = role === "batsman" || role === "keeper" || umpire;
 
   const mat = (color: number, rough = 0.88) => stdMat(color, { roughness: rough }, m);
-  const shirt = mat(umpire ? 0xd7e6f2 : c.shirt);
-  const trousers = mat(umpire ? 0x25282d : c.trousers);
-  const skin = mat(c.skin, 0.72);
-  const hair = mat(c.hair, 0.6);
-  const cap = mat(c.cap, 0.8);
   const gear = mat(c.gear, 0.7);
   const boot = mat(umpire ? 0x17171a : c.boot, 0.7);
   const sole = mat(0x2a2a2e, 0.9);
@@ -262,115 +226,23 @@ export function makePlayer(opts: PlayerOptions = {}): PlayerRig {
   const root = new THREE.Group();
   root.name = `player-${role}`;
 
-  /* ---- Pelvis ------------------------------------------------------ */
-  const pelvis = group(
-    "pelvis",
-    [
-      {
-        geo: lathe([[-0.1, 0.105], [-0.05, 0.14], [0.02, 0.146], [0.1, 0.133]], 16, 0.72),
-        mat: trousers,
-      },
-      // Seat, so the silhouette from side-on has a back to it.
-      { geo: sphere(0.085, -0.055, -0.045, 0.045, 1, 0.9, 0.75), mat: trousers },
-      { geo: sphere(0.085, 0.055, -0.045, 0.045, 1, 0.9, 0.75), mat: trousers },
-    ],
-    0,
-    S.hipY,
-    0
-  );
+  /* ---- Joints ------------------------------------------------------- */
+  const pelvis = group("pelvis", [], 0, S.hipY, 0);
   root.add(pelvis);
-
-  /* ---- Spine (abdomen) and chest ----------------------------------- */
-  const spineParts: Part[] = [
-    {
-      geo: lathe([[0, 0.13], [0.08, 0.132], [0.15, 0.142], [S.chest + 0.01, 0.15]], 16, 0.66),
-      mat: shirt,
-    },
-  ];
-  if (umpire) {
-    spineParts.push({ geo: lathe([[0, 0.134], [0.035, 0.134]], 16, 0.68), mat: strap });
-  }
-  const spine = group("spine", spineParts, 0, S.waist, 0);
+  const spine = group("spine", [], 0, S.waist, 0);
   pelvis.add(spine);
-
-  const chestParts: Part[] = [
-    {
-      geo: lathe(
-        [
-          [0, 0.15],
-          [0.06, 0.158],
-          [0.13, 0.166],
-          [0.2, 0.173],
-          [0.245, 0.17],
-          [0.28, 0.13],
-          [0.305, 0.07],
-          [0.315, 0.05],
-        ],
-        18,
-        0.62
-      ),
-      mat: shirt,
-    },
-    // Trapezius, sloping from the neck out to the shoulders.
-    { geo: sphere(0.16, 0, 0.268, 0.012, 1, 0.3, 0.55), mat: shirt },
-    // Neck and collar.
-    { geo: cyl(0.047, 0.054, 0.12, 0, 0.33, 0.005), mat: skin },
-    {
-      geo: place(new THREE.TorusGeometry(0.058, 0.013, 6, 18).rotateX(Math.PI / 2), 0, 0.29, 0.004),
-      mat: shirt,
-    },
-  ];
-  const chest = group("chest", chestParts, 0, S.chest, 0);
+  const chest = group("chest", [], 0, S.chest, 0);
   spine.add(chest);
+  const head = group("head", [], 0, S.neckY, 0);
+  chest.add(head);
 
-  /* ---- Legs --------------------------------------------------------- */
   const makeLeg = (side: 1 | -1) => {
-    const thighParts: Part[] = [
-      {
-        geo: lathe(
-          [
-            [-S.thigh, 0.058],
-            [-S.thigh + 0.05, 0.062],
-            [-0.25, 0.079],
-            [-0.12, 0.089],
-            [-0.03, 0.09],
-            [0, 0.086],
-          ],
-          14,
-          0.94
-        ),
-        mat: trousers,
-      },
-      { geo: sphere(0.088, 0, 0, 0), mat: trousers },
-    ];
-    if (padded) {
-      // Thigh flap of the pad, tied on above the knee.
-      thighParts.push({ geo: box(0.13, 0.13, 0.04, 0, -S.thigh + 0.1, -0.075), mat: gear });
-    }
+    const thighParts: Part[] = [];
+    // Thigh flap of the pad, tied on above the knee.
+    if (padded) thighParts.push({ geo: box(0.13, 0.13, 0.04, 0, -S.thigh + 0.1, -0.075), mat: gear });
     const hip = group(side < 0 ? "hipL" : "hipR", thighParts, side * S.hipX, 0, 0);
 
-    const shinParts: Part[] = [
-      {
-        // Calf swells behind the shin bone, so the lathe sits a little back.
-        geo: lathe(
-          [
-            [-S.shin, 0.036],
-            [-S.shin + 0.06, 0.041],
-            [-0.22, 0.056],
-            [-0.12, 0.066],
-            [-0.05, 0.063],
-            [0, 0.058],
-          ],
-          14,
-          1,
-          0,
-          0,
-          0.006
-        ),
-        mat: trousers,
-      },
-      { geo: sphere(0.062, 0, 0, 0), mat: trousers },
-    ];
+    const shinParts: Part[] = [];
     if (padded) {
       // Pad: a front shield with three vertical rolls, a knee roll, and two
       // straps round the back of the calf.
@@ -385,13 +257,12 @@ export function makePlayer(opts: PlayerOptions = {}): PlayerRig {
     const knee = group(side < 0 ? "kneeL" : "kneeR", shinParts, 0, -S.thigh, 0);
     hip.add(knee);
 
-    // Foot: the ankle is the pivot; the shoe runs forward to the toe (-Z).
+    // Boot over the foot: the ankle is the pivot; the shoe runs forward to the toe (-Z).
     const footLen = S.toe + S.heel;
-    const footMid = (S.heel - S.toe) / 2; // z of the shoe's centre
+    const footMid = (S.heel - S.toe) / 2;
     const ankle = group(
       side < 0 ? "ankleL" : "ankleR",
       [
-        { geo: sphere(0.042, 0, 0, 0), mat: boot },
         { geo: sphere(0.058, 0, -0.035, footMid, 0.85, 0.62, footLen / 0.116), mat: boot },
         { geo: box(0.09, 0.016, footLen, 0, -S.ankleH + 0.008, footMid), mat: sole },
       ],
@@ -406,66 +277,22 @@ export function makePlayer(opts: PlayerOptions = {}): PlayerRig {
   const legL = makeLeg(-1);
   const legR = makeLeg(1);
 
-  /* ---- Arms --------------------------------------------------------- */
   const makeArm = (side: 1 | -1) => {
-    const shoulder = group(
-      side < 0 ? "shoulderL" : "shoulderR",
-      [
-        {
-          geo: lathe(
-            [
-              [-S.upperArm, 0.043],
-              [-0.2, 0.05],
-              [-0.08, 0.057],
-              [-0.02, 0.06],
-              [0, 0.058],
-            ],
-            12
-          ),
-          mat: shirt,
-        },
-        // Deltoid.
-        { geo: sphere(0.064, 0, -0.012, 0, 1, 1.05, 1), mat: shirt },
-      ],
-      side * S.shoulderX,
-      S.shoulderY,
-      0
-    );
-
-    const foreParts: Part[] = [
-      {
-        geo: lathe(
-          [
-            [-S.forearm, 0.031],
-            [-0.2, 0.034],
-            [-0.1, 0.043],
-            [-0.03, 0.046],
-            [0, 0.044],
-          ],
-          12
-        ),
-        mat: longSleeves ? shirt : skin,
-      },
-      { geo: sphere(0.047, 0, 0, 0), mat: longSleeves ? shirt : skin },
-    ];
-    // The fist: palm plus a thumb, or a glove over it.
+    const shoulder = group(side < 0 ? "shoulderL" : "shoulderR", [], side * S.shoulderX, S.shoulderY, 0);
+    // The fist is the hand joint; gloves are worn over it.
     const fistY = -S.forearm - S.hand;
+    const foreParts: Part[] = [];
     if (role === "batsman") {
       foreParts.push({ geo: sphere(0.058, 0, fistY, 0, 0.95, 1.2, 0.85), mat: glove });
       foreParts.push({ geo: cyl(0.05, 0.052, 0.05, 0, fistY + 0.055, 0), mat: glove });
     } else if (role === "keeper") {
       foreParts.push({ geo: sphere(0.08, 0, fistY, -0.01, 1.05, 1.15, 0.7), mat: glove });
-    } else {
-      foreParts.push({ geo: sphere(0.04, 0, fistY, 0, 0.85, 1.15, 0.72), mat: skin });
-      foreParts.push({ geo: sphere(0.017, side * -0.03, fistY + 0.012, -0.02, 1, 1.6, 1), mat: skin });
     }
     const elbow = group(side < 0 ? "elbowL" : "elbowR", foreParts, 0, -S.upperArm, 0);
-
     const hand = new THREE.Group();
     hand.name = side < 0 ? "handL" : "handR";
     hand.position.set(0, fistY, 0);
     elbow.add(hand);
-
     shoulder.add(elbow);
     chest.add(shoulder);
     return { shoulder, elbow, hand };
@@ -473,85 +300,22 @@ export function makePlayer(opts: PlayerOptions = {}): PlayerRig {
   const armL = makeArm(-1);
   const armR = makeArm(1);
 
-  /* ---- Head --------------------------------------------------------- */
-  // Head pivot is the top of the neck; the chin sits just above it.
-  const chinLocal = 0.045;
-  const headH = 0.235;
-  const headScaleY = headH / 0.185;
-  const headMid = chinLocal + headH * 0.52;
-  const crown = chinLocal + headH;
-  const headParts: Part[] = [
-    { geo: place(headLathe(1, headScaleY), 0, chinLocal, 0), mat: skin },
-    // Nose, ears, brow: a head needs a front and a side to have a facing.
-    { geo: sphere(0.02, 0, headMid - 0.025, -0.09, 0.9, 1.25, 1.4, 6, 5), mat: skin },
-    { geo: sphere(0.025, -0.091, headMid - 0.01, 0.004, 0.42, 1, 0.9, 6, 5), mat: skin },
-    { geo: sphere(0.025, 0.091, headMid - 0.01, 0.004, 0.42, 1, 0.9, 6, 5), mat: skin },
-    { geo: sphere(0.075, 0, headMid + 0.03, -0.035, 1.05, 0.4, 0.75, 10, 6), mat: skin },
-  ];
-  const head = group("head", headParts, 0, S.neckY, 0);
-  chest.add(head);
-
-  const skullR = 0.1;
-  if (role === "batsman" || role === "keeper") {
-    const dome = new THREE.SphereGeometry(skullR * 1.13, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.6);
-    const lid: Part[] = [
-      { geo: place(dome, 0, headMid + 0.012, 0.008), mat: cap },
-      // Peak over the eyes.
-      { geo: sphere(0.1, 0, crown - 0.075, -0.1, 1, 0.12, 0.85, 12, 4), mat: cap },
-      // Neck guard at the back.
-      { geo: sphere(0.1, 0, headMid - 0.03, 0.06, 1, 0.45, 0.6, 10, 6), mat: cap },
-    ];
-    if (role === "batsman") {
-      // Faceguard: a frame of bars in front of the face.
-      for (const dy of [-0.018, -0.055, -0.09]) {
-        lid.push({ geo: cylX(0.006, 0.17, 0, headMid + dy, -0.115 - dy * 0.12, 6), mat: strap });
-      }
-      for (const dx of [-0.055, 0.055]) {
-        lid.push({ geo: cyl(0.006, 0.006, 0.1, dx, headMid - 0.05, -0.117, 6), mat: strap });
-      }
-    }
-    head.add(mergeByMaterial(lid));
-  } else if (umpire) {
-    head.add(
-      mergeByMaterial([
-        // Wide brim and a low crown: the silhouette the reference umpire has.
-        { geo: cyl(0.2, 0.2, 0.012, 0, crown - 0.055, 0, 20), mat: gear },
-        { geo: cyl(0.1, 0.112, 0.08, 0, crown - 0.012, 0, 16), mat: gear },
-        { geo: sphere(0.098, 0, headMid - 0.02, 0.015, 1, 0.55, 1), mat: hair },
-      ])
-    );
-  } else {
-    const dome = new THREE.SphereGeometry(skullR * 1.05, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.55);
-    head.add(
-      mergeByMaterial([
-        { geo: place(dome, 0, headMid + 0.016, 0.004), mat: cap },
-        { geo: sphere(0.095, 0, crown - 0.075, -0.095, 1, 0.1, 0.9, 12, 4), mat: cap },
-        { geo: sphere(0.095, 0, headMid - 0.028, 0.02, 1, 0.5, 1), mat: hair },
-      ])
-    );
-  }
-
-  const rig: PlayerRig = {
-    root,
-    pelvis,
-    spine,
-    chest,
-    head,
-    hipL: legL.hip,
-    kneeL: legL.knee,
-    ankleL: legL.ankle,
-    hipR: legR.hip,
-    kneeR: legR.knee,
-    ankleR: legR.ankle,
-    shoulderL: armL.shoulder,
-    elbowL: armL.elbow,
-    handL: armL.hand,
-    shoulderR: armR.shoulder,
-    elbowR: armR.elbow,
-    handR: armR.hand,
-    bat: null,
-    role,
+  const joints = {
+    root, pelvis, spine, chest, head,
+    hipL: legL.hip, kneeL: legL.knee, ankleL: legL.ankle,
+    hipR: legR.hip, kneeR: legR.knee, ankleR: legR.ankle,
+    shoulderL: armL.shoulder, elbowL: armL.elbow, handL: armL.hand,
+    shoulderR: armR.shoulder, elbowR: armR.elbow, handR: armR.hand,
   };
+
+  root.scale.setScalar(RIG_SCALE);
+  const rig: PlayerRig = { ...joints, bat: null, role, kit: c, materials: m };
+  if (opts.body || opts.appearance) {
+    if (!opts.body || !opts.appearance) throw new Error("makePlayer: a body needs an appearance, and an appearance a body");
+    dressPlayer(rig, opts.body, opts.appearance);
+  } else {
+    headgear(rig, DEFAULT_HEAD, 0, false);
+  }
 
   if (role === "batsman") {
     const bat = makeBat(m);
@@ -568,7 +332,90 @@ export function makePlayer(opts: PlayerOptions = {}): PlayerRig {
     }
   });
 
-  root.scale.setScalar(RIG_SCALE);
   root.userData.rig = rig;
   return rig;
+}
+
+/**
+ * Put a person in the rig: their body, hair and facial hair, painted with
+ * their skin and the rig's kit, and headgear fitted to their skull. Takes off
+ * whoever was in it before, so a rig can be re-used when a new batsman walks
+ * in or the bowling changes.
+ */
+export function dressPlayer(rig: PlayerRig, body: BodyTemplate, appearance: Appearance): void {
+  for (const o of [...rig.root.children, ...rig.head.children]) {
+    if (o.userData.dress || o.userData.headgear) o.removeFromParent();
+  }
+  const c = rig.kit;
+  const umpire = rig.role === "umpire";
+  const gloved = rig.role === "batsman" || rig.role === "keeper";
+  const colours = bodyColours(appearance, {
+    shirt: umpire ? 0xd7e6f2 : c.shirt,
+    trousers: umpire ? 0x25282d : c.trousers,
+    boot: umpire ? 0x17171a : c.boot,
+    longSleeves: gloved || umpire,
+  });
+  const capped = gloved || umpire || appearance.cap;
+  const { head, hairLift } = attachBody(rig, body, {
+    colours,
+    // Under a helmet, cap or hat only the hair below the brim shows; a style
+    // that would stand proud of it is worn flattened, as the short one.
+    hair: capped && (appearance.hair === "curly" || appearance.hair === "neat") ? "short" : appearance.hair,
+    beard: appearance.facialHair,
+    hideHands: gloved,
+  });
+  headgear(rig, head, hairLift, appearance.cap);
+}
+
+/**
+ * Helmet for batsmen and keepers, a wide-brimmed hat for the umpire, a cap for
+ * a fielder who wears one. Sized to the skull plus whatever hair is under it.
+ */
+function headgear(rig: PlayerRig, fit: HeadFit, hairLift: number, cap: boolean): void {
+  const c = rig.kit;
+  const mat = (color: number, rough = 0.85) => stdMat(color, { roughness: rough }, rig.materials);
+  const shell = mat(c.cap, 0.8);
+  const strap = mat(0x25252a, 0.85);
+  const gear = mat(c.gear, 0.7);
+  const hc = fit.centre;
+  const r = fit.radius + hairLift;
+  let parts: Part[] | null = null;
+  if (rig.role === "batsman" || rig.role === "keeper") {
+    const dome = new THREE.SphereGeometry(r + 0.03, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.6);
+    parts = [
+      { geo: place(dome, hc.x, hc.y + 0.01, hc.z + 0.008), mat: shell },
+      // Peak over the eyes.
+      { geo: sphere(0.1, hc.x, hc.y + 0.035, hc.z - r - 0.02, 1, 0.12, 0.85, 12, 4), mat: shell },
+      // Neck guard at the back.
+      { geo: sphere(0.1, hc.x, hc.y - 0.03, hc.z + r * 0.7, 1, 0.45, 0.6, 10, 6), mat: shell },
+    ];
+    if (rig.role === "batsman") {
+      // Faceguard: a frame of bars in front of the face.
+      for (const dy of [-0.018, -0.055, -0.09]) {
+        parts.push({ geo: cylX(0.006, 0.17, hc.x, hc.y + dy, hc.z - fit.radius - 0.035 - dy * 0.12, 6), mat: strap });
+      }
+      for (const dx of [-0.055, 0.055]) {
+        parts.push({ geo: cyl(0.006, 0.006, 0.1, hc.x + dx, hc.y - 0.05, hc.z - fit.radius - 0.037, 6), mat: strap });
+      }
+    }
+  } else if (rig.role === "umpire") {
+    // Wide brim and a low crown: the silhouette the reference umpire has.
+    parts = [
+      { geo: cyl(0.2, 0.2, 0.012, hc.x, hc.y + 0.045, hc.z, 20), mat: gear },
+      { geo: cyl(r + 0.022, r + 0.034, 0.08, hc.x, fit.crown + hairLift - 0.008, hc.z, 16), mat: gear },
+    ];
+  } else if (cap) {
+    const dome = new THREE.SphereGeometry(r + 0.014, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.55);
+    parts = [
+      { geo: place(dome, hc.x, hc.y + 0.012, hc.z + 0.004), mat: shell },
+      { geo: sphere(0.095, hc.x, hc.y + 0.03, hc.z - r - 0.012, 1, 0.1, 0.9, 12, 4), mat: shell },
+    ];
+  }
+  if (!parts) return;
+  const g = mergeByMaterial(parts);
+  g.userData.headgear = true;
+  g.traverse((o) => {
+    if ((o as THREE.Mesh).isMesh) o.castShadow = true;
+  });
+  rig.head.add(g);
 }
