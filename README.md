@@ -229,9 +229,45 @@ face away, so use `faceYaw` instead.
 
 ## Players
 
-Every player is real human anatomy from MPFB (MakeHuman for Blender), fitted
-to the game's own skeleton, with a face, hair, facial hair and kit described
-by a roster entry.
+Players come from one of two sources, both fitted to the game's own skeleton
+by the same Blender code (`tools/players/common.py`), so the animation and the
+bat-ball contact are identical whichever a player wears:
+
+- **Rocketbox avatars** (the squads use these): Microsoft Rocketbox's MIT
+  licensed people, with photographic faces, hair and skin. A roster entry
+  names the avatar: `appearance: { avatar: "Male_Adult_08", cap: false }`.
+- **Built bodies**: MPFB (MakeHuman for Blender) anatomy with the face, hair
+  and facial hair described by building blocks, below.
+
+### Rocketbox avatars
+
+The avatars wear street clothes. Their shape is kept (a shirt modelled as a
+shirt reads as one) but not their colour: every garment becomes a kit slot the
+game paints per side. The mesh is one welded piece, so the garments are told
+apart by their texture islands: an island is skin only if it is the colour of
+that avatar's own fingers (and, on the torso, a very close match), sleeves
+must be nearer the skin than the shirt to count as bare, and hips vote by
+height between hem and waistband. Bare skin, faces and hair keep their
+photographic texture, shaded with the soft cel ramp.
+
+The source assets are not in the repo (each avatar is 25-40 MB of TGA). To
+rebuild:
+
+```bash
+pnpm fetch:rocketbox
+```
+
+```bash
+pnpm build:rocketbox
+```
+
+`tools/players/rocketbox/avatars.json` lists the avatars;
+`roster/appearance.ts` lists the same ones for the game, and a test keeps the
+two, the manifest and the squads in step (including that nobody appears twice
+on the field). The MIT notice ships beside the models in
+`public/models/players/ROCKETBOX-LICENSE.md`.
+
+### Built bodies
 
 ```ts
 { name: "Sharma", role: "batsman", appearance: {
@@ -481,5 +517,6 @@ pace-overrun/no-ball meter.
 
 No EA models, textures, audio, logos or player likenesses are used. Everything
 is generated procedurally; every player is fictional. Player bodies are made
-with MPFB (MakeHuman), whose generated output is CC0. What is being matched is the visual language — HUD
+with MPFB (MakeHuman), whose generated output is CC0, or from Microsoft
+Rocketbox avatars (MIT, notice in `public/models/players/ROCKETBOX-LICENSE.md`). What is being matched is the visual language — HUD
 layout, camera work, interaction grammar.
