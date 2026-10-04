@@ -1,0 +1,274 @@
+{
+  "builds": [
+    {
+      "name": "south-asian-lean",
+      "file": "south-asian-lean.glb",
+      "source": "mpfb",
+      "heritage": "south-asian",
+      "physique": "lean",
+      "skin": "a8724c"
+    },
+    {
+      "name": "south-asian-athletic",
+      "file": "south-asian-athletic.glb",
+      "source": "mpfb",
+      "heritage": "south-asian",
+      "physique": "athletic",
+      "skin": "a8724c"
+    },
+    {
+      "name": "south-asian-stocky",
+      "file": "south-asian-stocky.glb",
+      "source": "mpfb",
+      "heritage": "south-asian",
+      "physique": "stocky",
+      "skin": "a8724c"
+    },
+    {
+      "name": "south-asian-veteran",
+      "file": "south-asian-veteran.glb",
+      "source": "mpfb",
+      "heritage": "south-asian",
+      "physique": "veteran",
+      "skin": "a8724c"
+    },
+    {
+      "name": "east-asian-lean",
+      "file": "east-asian-lean.glb",
+      "source": "mpfb",
+      "heritage": "east-asian",
+      "physique": "lean",
+      "skin": "d8a97f"
+    },
+    {
+      "name": "east-asian-athletic",
+      "file": "east-asian-athletic.glb",
+      "source": "mpfb",
+      "heritage": "east-asian",
+      "physique": "athletic",
+      "skin": "d8a97f"
+    },
+    {
+      "name": "east-asian-stocky",
+      "file": "east-asian-stocky.glb",
+      "source": "mpfb",
+      "heritage": "east-asian",
+      "physique": "stocky",
+      "skin": "d8a97f"
+    },
+    {
+      "name": "european-lean",
+      "file": "european-lean.glb",
+      "source": "mpfb",
+      "heritage": "european",
+      "physique": "lean",
+      "skin": "e2b394"
+    },
+    {
+      "name": "european-athletic",
+      "file": "european-athletic.glb",
+      "source": "mpfb",
+      "heritage": "european",
+      "physique": "athletic",
+      "skin": "e2b394"
+    },
+    {
+      "name": "european-stocky",
+      "file": "european-stocky.glb",
+      "source": "mpfb",
+      "heritage": "european",
+      "physique": "stocky",
+      "skin": "e2b394"
+    },
+    {
+      "name": "european-veteran",
+      "file": "european-veteran.glb",
+      "source": "mpfb",
+      "heritage": "european",
+      "physique": "veteran",
+      "skin": "e2b394"
+    },
+    {
+      "name": "african-lean",
+      "file": "african-lean.glb",
+      "source": "mpfb",
+      "heritage": "african",
+      "physique": "lean",
+      "skin": "5c3a27"
+    },
+    {
+      "name": "african-athletic",
+      "file": "african-athletic.glb",
+      "source": "mpfb",
+      "heritage": "african",
+      "physique": "athletic",
+      "skin": "5c3a27"
+    },
+    {
+      "name": "african-stocky",
+      "file": "african-stocky.glb",
+      "source": "mpfb",
+      "heritage": "african",
+      "physique": "stocky",
+      "skin": "5c3a27"
+    },
+    {
+      "name": "rb-male-adult-02",
+      "file": "rb-male-adult-02.glb",
+      "source": "rocketbox",
+      "avatar": "Male_Adult_02",
+      "skin": "ce9a85"
+    },
+    {
+      "name": "rb-male-adult-03",
+      "file": "rb-male-adult-03.glb",
+      "source": "rocketbox",
+      "avatar": "Male_Adult_03",
+      "skin": "bc846f"
+    },
+    {
+      "name": "rb-male-adult-04",
+      "file": "rb-male-adult-04.glb",
+      "source": "rocketbox",
+      "avatar": "Male_Adult_04",
+      "skin": "9e6d51"
+    },
+    {
+      "name": "rb-male-adult-05",
+      "file": "rb-male-adult-05.glb",
+      "source": "rocketbox",
+      "avatar": "Male_Adult_05",
+      "skin": "cf9374"
+    },
+    {
+      "name": "rb-male-adult-06",
+      "file": "rb-male-adult-06.glb",
+      "source": "rocketbox",
+      "avatar": "Male_Adult_06",
+      "skin": "bb846e"
+    },
+    {
+      "name": "rb-male-adult-07",
+      "file": "rb-male-adult-07.glb",
+      "source": "rocketbox",
+      "avatar": "Male_Adult_07",
+      "skin": "bf7f5d"
+    },
+    {
+      "name": "rb-male-adult-08",
+      "file": "rb-male-adult-08.glb",
+      "source": "rocketbox",
+      "avatar": "Male_Adult_08",
+      "skin": "bd846f"
+    },
+    {
+      "name": "rb-male-adult-09",
+      "file": "rb-male-adult-09.glb",
+      "source": "rocketbox",
+      "avatar": "Male_Adult_09",
+      "skin": "cd987c"
+    },
+    {
+      "name": "rb-male-adult-10",
+      "file": "rb-male-adult-10.glb",
+      "source": "rocketbox",
+      "avatar": "Male_Adult_10",
+      "skin": "d49262"
+    },
+    {
+      "name": "rb-male-adult-11",
+      "file": "rb-male-adult-11.glb",
+      "source": "rocketbox",
+      "avatar": "Male_Adult_11",
+      "skin": "e19e85"
+    },
+    {
+      "name": "rb-male-adult-12",
+      "file": "rb-male-adult-12.glb",
+      "source": "rocketbox",
+      "avatar": "Male_Adult_12",
+      "skin": "865b46"
+    },
+    {
+      "name": "rb-male-adult-13",
+      "file": "rb-male-adult-13.glb",
+      "source": "rocketbox",
+      "avatar": "Male_Adult_13",
+      "skin": "ba816d"
+    },
+    {
+      "name": "rb-male-adult-14",
+      "file": "rb-male-adult-14.glb",
+      "source": "rocketbox",
+      "avatar": "Male_Adult_14",
+      "skin": "c28b77"
+    },
+    {
+      "name": "rb-male-adult-16",
+      "file": "rb-male-adult-16.glb",
+      "source": "rocketbox",
+      "avatar": "Male_Adult_16",
+      "skin": "cd987c"
+    },
+    {
+      "name": "rb-male-adult-17",
+      "file": "rb-male-adult-17.glb",
+      "source": "rocketbox",
+      "avatar": "Male_Adult_17",
+      "skin": "9f6c4f"
+    },
+    {
+      "name": "rb-male-adult-20",
+      "file": "rb-male-adult-20.glb",
+      "source": "rocketbox",
+      "avatar": "Male_Adult_20",
+      "skin": "c18470"
+    },
+    {
+      "name": "rb-business-male-02",
+      "file": "rb-business-male-02.glb",
+      "source": "rocketbox",
+      "avatar": "Business_Male_02",
+      "skin": "c08b6f"
+    },
+    {
+      "name": "rb-business-male-05",
+      "file": "rb-business-male-05.glb",
+      "source": "rocketbox",
+      "avatar": "Business_Male_05",
+      "skin": "b17c5e"
+    },
+    {
+      "name": "rb-business-male-06",
+      "file": "rb-business-male-06.glb",
+      "source": "rocketbox",
+      "avatar": "Business_Male_06",
+      "skin": "bb816c"
+    },
+    {
+      "name": "rb-sports-male-03",
+      "file": "rb-sports-male-03.glb",
+      "source": "rocketbox",
+      "avatar": "Sports_Male_03",
+      "skin": "ae7357"
+    }
+  ],
+  "hairStyles": [
+    "bald",
+    "buzz",
+    "short",
+    "receding",
+    "neat",
+    "curly",
+    "long"
+  ],
+  "beardStyles": [
+    "none",
+    "stubble",
+    "short",
+    "full",
+    "goatee",
+    "moustache",
+    "goatee-moustache"
+  ]
+}

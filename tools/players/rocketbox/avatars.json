@@ -1,0 +1,85 @@
+{
+  "comment": "Microsoft Rocketbox avatars (MIT) used for players. Heritage and physique are for casting only; the face, hair and skin come from the avatar's own textures.",
+  "avatars": [
+    {
+      "id": "Male_Adult_02",
+      "folder": "Adults"
+    },
+    {
+      "id": "Male_Adult_03",
+      "folder": "Adults"
+    },
+    {
+      "id": "Male_Adult_04",
+      "folder": "Adults"
+    },
+    {
+      "id": "Male_Adult_05",
+      "folder": "Adults"
+    },
+    {
+      "id": "Male_Adult_06",
+      "folder": "Adults"
+    },
+    {
+      "id": "Male_Adult_07",
+      "folder": "Adults"
+    },
+    {
+      "id": "Male_Adult_08",
+      "folder": "Adults"
+    },
+    {
+      "id": "Male_Adult_09",
+      "folder": "Adults"
+    },
+    {
+      "id": "Male_Adult_10",
+      "folder": "Adults"
+    },
+    {
+      "id": "Male_Adult_11",
+      "folder": "Adults"
+    },
+    {
+      "id": "Male_Adult_12",
+      "folder": "Adults"
+    },
+    {
+      "id": "Male_Adult_13",
+      "folder": "Adults"
+    },
+    {
+      "id": "Male_Adult_14",
+      "folder": "Adults"
+    },
+    {
+      "id": "Male_Adult_16",
+      "folder": "Adults"
+    },
+    {
+      "id": "Male_Adult_17",
+      "folder": "Adults"
+    },
+    {
+      "id": "Male_Adult_20",
+      "folder": "Adults"
+    },
+    {
+      "id": "Business_Male_02",
+      "folder": "Professions"
+    },
+    {
+      "id": "Business_Male_05",
+      "folder": "Professions"
+    },
+    {
+      "id": "Business_Male_06",
+      "folder": "Professions"
+    },
+    {
+      "id": "Sports_Male_03",
+      "folder": "Professions"
+    }
+  ]
+}

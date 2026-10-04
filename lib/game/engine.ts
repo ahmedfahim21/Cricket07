@@ -53,9 +53,10 @@ import { moveAtCrease } from "./input/movement";
 import { RUN_TIME, fieldFor, runsAvailable, type FieldPosition } from "./match/fielding";
 import { applyBall, newInnings, toOutcome, type Dismissal, type MatchState } from "./match/state";
 import { BattingController } from "./input/controller";
-import type { Footwork, ShotType } from "./input/bindings";
+import type { BattingIntent, Footwork, ShotType } from "./input/bindings";
 import { C, applyPose, copyPose, makePose, sweetSpot } from "./anim/pose";
 import { APPROACH, BowlerAnimator, deliveryOrigin, simulateRelease } from "./anim/bowler";
+import { battingStyle, bowlingStyle, styledApproach } from "./anim/style";
 import { BatsmanAnimator, CONTACT_X } from "./anim/batsman";
 import { FielderAnimator, JOG, SPRINT, faceYaw } from "./anim/fielder";
 import { RunnerAnimator } from "./anim/runner";
@@ -63,6 +64,10 @@ import { umpireSignalPose } from "./anim/umpire";
 import { BOUNDARY_CUT_TIME, BOUNDARY_HOLD_TIME, UMPIRE_SIGNAL_START, type BoundaryRuns } from "./presentation/boundary";
 import { dismissedBatsman, momentShot, nextReaction, reactionTime, WICKET_HOLD_TIME, type MatchMoment, type MomentShot } from "./presentation/moments";
 import { ReactionScene } from "./presentation/reactions";
+import { loadBodies, type BodyLibrary } from "./assets/bodies";
+import { dressAs } from "./roster/cast";
+import { buildFor } from "./roster/appearance";
+import { FIELDING, HOME, UMPIRE, VISITORS, bowlerFor, buildsNeeded, fieldersFor, playerNamed, type RosterPlayer } from "./roster/squads";
 import { BOWLERS, DEFAULT_BOWLING_AIM, bowlingStatus, isBowlingWide, lockPlayerDelivery, moveBowlingAim, playerDelivery, shouldChangeBowler, type BowlingAim } from "./match/player-bowling";
 import { decideAiShot, type AiDecision } from "./match/ai-batsman";
 import { NEUTRAL_INTENT } from "./input/bindings";
@@ -90,6 +95,15 @@ export interface LiveState {
   /** Seconds from the ideal press; negative is early, null means no contact ahead. */
   timingError: number | null;
   shotFeedback: string;
+  /**
+   * What the player is holding, republished every frame.
+   *
+   * The HUD needs this because most of the batting controls are modifiers, and
+   * a modifier that shows no sign of being read is indistinguishable from an
+   * unbound key: Shift is invisible until the ball is already in the air, and
+   * leaving or charging has nothing on screen at all.
+   */
+  intent: { shot: ShotType; aim: number; square: boolean; leave: boolean; advance: boolean; manualFootwork: boolean };
   footwork: Footwork;
   phase: Phase;
   ballX: number;
@@ -265,7 +279,8 @@ export class Game {
   private markerPoint: THREE.Vector3 | null = null;
   private markerLocked = false;
   private markerFade = 0;
-  private previewRelease = new Map<BowlerStyle, THREE.Vector3>();
+  /** Release points from a dry run of each bowler's action, keyed by bowler and type. */
+  private previewRelease = new Map<string, THREE.Vector3>();
   private bounceZ: number | null = null;
   private strikerRoot = STRIKER_ROOT.clone();
   private shuffleTime = 0;
@@ -280,6 +295,8 @@ export class Game {
   private umpirePose = makePose();
   private boundaryCameraActive = false;
   private reactions!: ReactionScene;
+  private bodies!: BodyLibrary;
+  private cel!: ReturnType<typeof createCelifier>;
   private reactionCameraShot: MomentShot | null = null;
   private cosmeticRand = mulberry32(7062026);
   private previousBowlerReaction = -1;
@@ -301,7 +318,7 @@ export class Game {
 
   private phase: Phase = "idle";
   private phaseTime = 0;
-  private lastEvent = "Press R to bowl";
+  private lastEvent = "Press Space to bowl";
   private match: MatchState;
   private telemetryTimer = 0;
   private onTelemetry?: (t: Telemetry) => void;
@@ -312,6 +329,16 @@ export class Game {
   private triggered = false;
   private shotPlayed = false;
   private left = false;
+  /** The player pressed leave: withdraw the bat and refuse a later stroke. */
+  private leaving = false;
+  /**
+   * Leave decided during the run-up, honoured on the first frame of flight.
+   *
+   * Without this the leave key is dead for the whole approach — which is
+   * exactly when a batsman decides to leave one — and a tap of it before
+   * release simply vanishes.
+   */
+  private leaveArmed = false;
   private pending: PendingShot | null = null;
   private struck = false;
   private contactClock = 0;
@@ -344,6 +371,7 @@ export class Game {
     momentShot: null,
     timingError: null,
     shotFeedback: "",
+    intent: { shot: "ground", aim: 0, square: false, leave: false, advance: false, manualFootwork: false },
     footwork: "front",
     phase: "idle",
     ballX: 0,
@@ -364,7 +392,7 @@ export class Game {
   ) {
     this.onTelemetry = opts.onTelemetry;
     try { this.progress = loadProgress(window.localStorage); } catch { /* Storage may be disabled. */ }
-    this.match = newInnings(["Sharma", "Patel", "Khan", "Mitchell", "Okafor", "Silva", "Brennan"]);
+    this.match = newInnings(HOME.players.map((p) => p.name));
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
     // The pipeline owns pixel ratio, tone mapping and anti-aliasing: the scene
@@ -381,8 +409,11 @@ export class Game {
 
   /** Async because Rapier is WASM and must load before a world exists. */
   async start(): Promise<void> {
-    await initPhysics();
+    // The physics WASM and the players' bodies load together.
+    const builds = buildsNeeded([HOME, VISITORS, FIELDING], [UMPIRE], buildFor);
+    const [, bodies] = await Promise.all([initPhysics(), loadBodies(builds)]);
     if (this.disposed) return;
+    this.bodies = bodies;
 
     this.lib = createMaterialLibrary(this.renderer);
     this.world = new CricketWorld();
@@ -450,7 +481,8 @@ export class Game {
     this.scene.add(bowlerRig.root);
     this.bowler = new BowlerAnimator(bowlerRig);
     this.bowler.onRelease = (hand) => this.release(hand);
-    // Preview choreography must never disturb the visible bowler's pose.
+    // Preview choreography must never disturb the visible bowler's pose. Never
+    // drawn, so it is a bare skeleton.
     this.previewRig = makePlayer({ role: "bowler", colours: FIELDING_KIT });
 
     const umpireRig = makePlayer({ role: "umpire" });
@@ -459,7 +491,8 @@ export class Game {
 
     this.field = fieldFor(this.hand);
     this.field.forEach((f, i) => {
-      const rig = makePlayer({ role: f.keeper ? "keeper" : "fielder", colours: FIELDING_KIT });
+      const role = f.keeper ? "keeper" : "fielder";
+      const rig = makePlayer({ role, colours: FIELDING_KIT });
       this.scene.add(rig.root);
       this.fielders.push(new FielderAnimator(rig, !!f.keeper, 21 + i));
       if (f.keeper) this.keeperIndex = i;
@@ -473,8 +506,8 @@ export class Game {
      * celify converts the finished scene to banded toon materials in one pass,
      * then the pipeline draws it through the ink / haze / grade pass.
      */
-    const cel = createCelifier({ shadowTint: new THREE.Color(DAY_MATCH_PRESET.celShadowTint) });
-    cel.apply(this.scene);
+    this.cel = createCelifier({ shadowTint: new THREE.Color(DAY_MATCH_PRESET.celShadowTint) });
+    this.cel.apply(this.scene);
     this.marker = new THREE.Mesh(new THREE.RingGeometry(0.26, 0.34, 48), new THREE.MeshBasicMaterial({
       color: 0x7de8ff, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide,
     }));
@@ -537,9 +570,9 @@ export class Game {
     other.run = new RunnerAnimator(other.rig, 12);
     other.mode = "run";
     other.run.placeAt(1, NON_STRIKER_LANE);
-
-    const approach = APPROACH[this.style];
-    this.bowler.setup(approach, deliveryOrigin(approach, FRONT_FOOT_Z), BOWLER_LINE_X, STUMPS_LOOK);
+    // After the fresh animators: dressing also gives each his style.
+    this.dressCast();
+    this.setupBowler();
 
     this.umpire.place(UMPIRE_AT, 0);
     this.field.forEach((f, i) => {
@@ -558,6 +591,9 @@ export class Game {
     this.triggered = false;
     this.shotPlayed = false;
     this.left = false;
+    this.leaving = false;
+    this.leaveArmed = false;
+    this.publishIntent(null);
     this.pending = null;
     this.struck = false;
     this.outcome = null;
@@ -618,12 +654,11 @@ export class Game {
     this.setBowlerStyle(plan.style);
     this.plan = plan;
 
-    const approach = APPROACH[this.style];
-    this.bowler.setup(approach, deliveryOrigin(approach, FRONT_FOOT_Z), BOWLER_LINE_X, STUMPS_LOOK);
-    let hand = this.previewRelease.get(this.style);
+    const b = this.setupBowler();
+    let hand = this.previewRelease.get(b.key);
     if (!hand) {
-      hand = simulateRelease(this.previewRig, approach, deliveryOrigin(approach, FRONT_FOOT_Z), BOWLER_LINE_X, STUMPS_LOOK).hand;
-      this.previewRelease.set(this.style, hand);
+      hand = simulateRelease(this.previewRig, b.approach, b.origin, b.lineX, STUMPS_LOOK, b.style).hand;
+      this.previewRelease.set(b.key, hand);
     }
     const release = buildDelivery({ ...plan, releaseX: hand.x, releaseHeight: hand.y, releaseZ: hand.z });
     const bounce = this.mode === "bowling" ? { x: this.bowlingAim.line, z: STRIKER_STUMPS_Z + this.bowlingAim.length }
@@ -661,7 +696,7 @@ export class Game {
   /** Freeze pace/target before the delivery stride and fit the real release to that spot. */
   private lockBowlingAim(): void {
     if (this.markerLocked || this.mode !== "bowling") return;
-    const hand = this.previewRelease.get(this.style);
+    const hand = this.previewRelease.get(this.bowlerSetup().key);
     if (!hand) return;
     const locked = lockPlayerDelivery(playerDelivery(BOWLERS[this.playerBowler], this.bowlingAim), hand, this.world.pitch, this.world.outfield);
     this.plan = locked.plan;
@@ -775,15 +810,23 @@ export class Game {
     const { intent } = this.input.consume();
     const bowling = this.input.consumeBowling();
     if (this.mode === "bowling" && !this.markerLocked) {
-      this.bowlingAim = moveBowlingAim(this.bowlingAim, bowling.x, bowling.forward, bowling.pace, dt, this.aimScreenSign());
+      this.bowlingAim = moveBowlingAim(this.bowlingAim, bowling.x, bowling.forward, bowling.pace, bowling.swing, dt, this.aimScreenSign());
       this.live.bowling.aim = { ...this.bowlingAim };
       this.markerPoint?.set(this.bowlingAim.line, 0.04, STRIKER_STUMPS_Z + this.bowlingAim.length);
       this.bounceZ = STRIKER_STUMPS_Z + this.bowlingAim.length;
       if (bowling.lock || this.bowler.runupProgress >= 0.9) this.lockBowlingAim();
     }
     this.live.bowling.runup = this.bowler.runupProgress;
+    // Deciding to leave during the approach sticks; choosing a foot instead
+    // cancels it, so the last decision made before the ball is bowled wins.
+    if (this.mode === "batting") {
+      if (intent.leave) this.leaveArmed = true;
+      else if (intent.footwork !== "none") this.leaveArmed = false;
+    }
+    this.publishIntent(this.mode === "bowling" ? null : intent);
+    const advancing = this.mode === "batting" && intent.advance;
     const offset = this.mode === "bowling" ? { x: 0, z: 0 }
-      : moveAtCrease({ x: this.strikerRoot.x - STRIKER_ROOT.x, z: this.strikerRoot.z - STRIKER_ROOT.z }, intent.moveX, intent.moveForward, dt, this.aimScreenSign());
+      : moveAtCrease({ x: this.strikerRoot.x - STRIKER_ROOT.x, z: this.strikerRoot.z - STRIKER_ROOT.z }, intent.moveX, intent.moveForward, dt, this.aimScreenSign(), advancing);
     const oldX = this.strikerRoot.x;
     const oldZ = this.strikerRoot.z;
     this.strikerRoot.set(STRIKER_ROOT.x + offset.x, 0, STRIKER_ROOT.z + offset.z);
@@ -813,13 +856,22 @@ export class Game {
 
     const { intent, shotAt } = this.input.consume();
     this.input.consumeBowling();
+    this.publishIntent(this.mode === "bowling" ? null : intent);
     if (this.mode === "bowling") this.updateAiBatsman();
     else if (!this.shotPlayed) {
       const footwork = this.selectedFootwork(intent.footwork);
       this.striker.bat.setFootwork(footwork === "front" ? 1 : -1);
       const prediction = this.contactPrediction(footwork);
       this.live.timingError = prediction?.timingError ?? null;
-      if (intent.shot) this.playShot(intent.shot, { ...intent, footwork }, shotAt, prediction);
+      // An explicit leave withdraws the bat for good. Tracked apart from the
+      // automatic leave below, which fires late and must still allow a stroke.
+      if ((intent.leave || this.leaveArmed) && !this.leaving) {
+        this.leaving = true;
+        this.left = true;
+        this.striker.bat.leave();
+        this.live.shotFeedback = "Left alone";
+      }
+      if (intent.shot && !this.leaving) this.playShot(intent.shot, { ...intent, footwork }, shotAt, prediction);
     }
 
     // No shot offered as the ball arrives: leave it, bat raised.
@@ -1003,7 +1055,8 @@ export class Game {
     const o = pending.outcome;
     const horizontal = o.exitSpeed * Math.cos(o.exitElevation);
     // exitDirection 0 is straight back past the bowler (+Z); + is leg side (+X).
-    this.world.placeBall({ x: batAt.x, y: Math.max(BALL_RADIUS, batAt.y), z: batAt.z });
+    const seated = { x: batAt.x, y: Math.max(BALL_RADIUS, batAt.y), z: batAt.z };
+    this.world.placeBall(seated);
     this.world.setBallVelocity(
       v3(horizontal * Math.sin(o.exitDirection), o.exitSpeed * Math.sin(o.exitElevation), horizontal * Math.cos(o.exitDirection)),
       v3()
@@ -1386,7 +1439,7 @@ export class Game {
       wide: this.mode === "bowling" && this.deliveryWide && !dead.dismissal,
     });
     const before = this.match;
-    this.match = applyBall(this.match, outcome);
+    this.match = applyBall(this.match, outcome, this.bowlerName());
     this.bowlerChangePending = this.mode === "bowling" && shouldChangeBowler(before, this.match);
     const status = this.mode === "bowling" ? bowlingStatus(this.match) : challengeStatus(CHALLENGES[this.level], this.match);
     if (status.result !== "playing") {
@@ -1400,6 +1453,20 @@ export class Game {
       this.lastEvent = this.describe(outcome, dead.dismissal);
     }
     this.runsToRun = 0;
+  }
+
+  /**
+   * Who the scorebook should put this ball against.
+   *
+   * Bowling at the AI there is a named player. Batting a challenge there is not
+   * — the opposition is generated from a style per over — so the style IS the
+   * bowler's identity, and figures accumulate per style across the innings,
+   * which is exactly how the challenge rotates them.
+   */
+  private bowlerName(): string {
+    if (this.mode === "bowling") return BOWLERS[this.playerBowler].name;
+    const style = this.style.replace(/-/g, " ");
+    return style.charAt(0).toUpperCase() + style.slice(1);
   }
 
   private describe(outcome: ReturnType<typeof toOutcome>, dismissal: Dismissal | null): string {
@@ -1643,9 +1710,72 @@ export class Game {
   setBowlerStyle(style: BowlerStyle): void {
     this.style = style;
     if (this.phase === "idle" && this.world) {
-      const approach = APPROACH[style];
-      this.bowler.setup(approach, deliveryOrigin(approach, FRONT_FOOT_Z), BOWLER_LINE_X, STUMPS_LOOK);
+      this.dressCast();
+      this.setupBowler();
     }
+  }
+
+  /**
+   * The current bowler's run and action: his bowling type's approach, bent by
+   * his own style — run length and speed, how wide of the crease he comes.
+   */
+  private bowlerSetup() {
+    const player = this.currentBowler();
+    const style = bowlingStyle(player.bowlingStyle);
+    const approach = styledApproach(APPROACH[this.style], style);
+    return {
+      key: `${player.name}:${this.style}`,
+      style,
+      approach,
+      origin: deliveryOrigin(approach, FRONT_FOOT_Z),
+      lineX: BOWLER_LINE_X + style.crease,
+    };
+  }
+
+  private setupBowler() {
+    const b = this.bowlerSetup();
+    this.bowler.setup(b.approach, b.origin, b.lineX, STUMPS_LOOK, b.style);
+    return b;
+  }
+
+  /* ---------------------------------------------------------------- *
+   * Casting: who is in each rig
+   * ---------------------------------------------------------------- */
+
+  /** The side batting: the player's own, or the AI's when the player bowls. */
+  private battingSquad() {
+    return this.mode === "bowling" ? VISITORS : HOME;
+  }
+
+  /** Whoever is bowling: the player's chosen bowler, or the AI's bowler of this style. */
+  private currentBowler(): RosterPlayer {
+    return this.mode === "bowling" ? playerNamed(FIELDING, BOWLERS[this.playerBowler].name) : bowlerFor(FIELDING, this.style);
+  }
+
+  private wear(rig: PlayerRig, player: RosterPlayer): void {
+    dressAs(rig, this.bodies, player);
+  }
+
+  /**
+   * Dress every rig as the person it currently is: the two batsmen by name off
+   * the scorecard, the bowler, the ten fielders and keeper who are not
+   * bowling, the umpire, and the broadcast doubles as the same people.
+   */
+  private dressCast(): void {
+    const squad = this.battingSquad();
+    const batters = this.batsmen.map((b) => playerNamed(squad, this.match.batsmen[b.index].name));
+    this.batsmen.forEach((b, i) => {
+      this.wear(b.rig, batters[i]);
+      b.bat.style = battingStyle(batters[i].batting);
+    });
+    const bowler = this.currentBowler();
+    this.wear(this.bowler.rig, bowler);
+    const field = fieldersFor(FIELDING, bowler, this.fielders.length);
+    this.fielders.forEach((f, i) => this.wear(f.rig, field[i]));
+    this.wear(this.umpire.rig, UMPIRE);
+    this.reactions.cast(bowler, field, batters, (rig, p) => this.wear(rig, p));
+    // New meshes come in as PBR; give them the cel look like everything else.
+    this.cel.apply(this.scene);
   }
 
   /** Start a fresh attempt only for unlocked levels, without recreating the scene. */
@@ -1661,10 +1791,10 @@ export class Game {
     this.live.fade = 0;
     this.live.lastBand = null;
     this.live.shotFeedback = "";
-    this.match = newInnings(["Sharma", "Patel", "Khan", "Mitchell", "Okafor", "Silva", "Brennan"]);
+    this.match = newInnings(HOME.players.map((p) => p.name));
     this.live.deliverySpeed = 0;
     this.style = CHALLENGES[level].styles[0];
-    this.lastEvent = "Press R to bowl";
+    this.lastEvent = "Press Space to bowl";
     this.resetPositions();
     this.input.consume();
     this.input.consumeRestart();
@@ -1694,12 +1824,12 @@ export class Game {
     this.previousAiSpeed = null;
     this.live.deliverySpeed = 0;
     this.bowlingAim = { ...DEFAULT_BOWLING_AIM };
-    this.match = newInnings(["Sharma", "Patel", "Khan", "Singh", "Rao", "Das", "Kumar"]);
+    this.match = newInnings(VISITORS.players.map((p) => p.name));
     this.style = BOWLERS[this.playerBowler].style;
     this.cameraMode = "tv";
     this.camera.position.copy(CAMERA_BROADCAST);
     this.cameraLook.copy(CAMERA_LOOK);
-    this.lastEvent = "Press R to start your run-up";
+    this.lastEvent = "Press Space to start your run-up";
     this.resetPositions();
     this.input.consume();
     this.input.consumeRestart();
@@ -1728,6 +1858,22 @@ export class Game {
     this.bowlingAim.pace = THREE.MathUtils.clamp(pace, 0, 1);
     this.live.bowling.aim = { ...this.bowlingAim };
     this.emitTelemetry(999);
+  }
+
+  /**
+   * Mirror what the player is holding into `live` for the HUD.
+   *
+   * Zeroed while bowling: the batting modifiers mean nothing there, and showing
+   * a stroke the player cannot play is worse than showing none.
+   */
+  private publishIntent(intent: BattingIntent | null): void {
+    const i = this.live.intent;
+    i.shot = intent?.nextShot ?? "ground";
+    i.aim = intent?.aim ?? 0;
+    i.square = intent?.square ?? false;
+    i.leave = (intent?.leave || this.leaveArmed || this.leaving) ?? false;
+    i.advance = intent?.advance ?? false;
+    i.manualFootwork = (intent?.footwork ?? "none") !== "none";
   }
 
   /** Resolve manual/automatic footwork and publish the choice to the timing HUD. */

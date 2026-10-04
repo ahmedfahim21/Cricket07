@@ -208,9 +208,11 @@ export function createCelifier(opts: CelOptions): Celifier {
     });
     // Faceted normals: cylinders and spheres read as cut shapes with a crisp
     // light/shadow split, which is the look, rather than a smeared gradient.
-    // WebGLPrograms honours flatShading on every material; the r172 typings
-    // just do not declare it on MeshToonMaterial.
-    Object.assign(mat, { flatShading: true });
+    // Organic surfaces (the players' skinned bodies) opt out with
+    // `userData.smoothShading`: on a sculpted body, facets read as shattered
+    // glass, not as a style. WebGLPrograms honours flatShading on every
+    // material; the r172 typings just do not declare it on MeshToonMaterial.
+    Object.assign(mat, { flatShading: src.userData.smoothShading !== true });
     mat.userData = { ...src.userData, celSource: src.uuid };
 
     mat.onBeforeCompile = (shader) => {

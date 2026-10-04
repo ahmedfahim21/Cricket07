@@ -44,28 +44,68 @@ The final level mixes all five bowling styles between deliveries.
 
 ## Controls
 
+These are Cricket 07's own keyboard controls, not a scheme of our own.
+
 | Keys | Action |
 |---|---|
-| W / A / S / D | Move forward / screen-left / back / screen-right during run-up |
-| ↑ / ↓ | Override automatic front/back-foot selection |
-| ← / → | Aim screen-left / screen-right |
-| Z | Defend |
-| X or Space | Ground shot |
-| C | Loft |
-| Shift | Play squarer |
-| R | Bowl the next delivery |
-| V | Switch batting / TV camera |
+| S | Front-foot shot |
+| W | Back-foot shot |
+| ↑ + S / W | Defend |
+| Shift + S / W | Loft it |
+| ← / → | Aim square of the wicket, screen-left / screen-right |
+| ↓ + ← / → | Play the same stroke straighter |
+| A | Leave it |
+| D | Come down the wicket |
+| ← ↑ ↓ → | Move about the crease, until the ball is out of the hand |
 
-Timing is judged on **when** the shot key goes down relative to the ball, not on
-which key — that is why shot type sits on its own keys rather than as a modifier.
-Press when the meter enters green. Its timing comes from the same contact
-prediction as the batting logic, including your moved position and footwork.
-Without ↑/↓, footwork is chosen automatically from the delivery's length.
+Every one of these except S and W is a modifier that moves nothing on its own,
+so the gauge carries a live readout of what is held — the foot, the stroke the
+next press will play, the aim, and whether you are leaving or charging. Without
+it a working modifier is indistinguishable from an unbound key, and the first
+you learn that Shift registered is when the ball is already in the air.
+
+The part that is easy to miss: **S and W are the shot**, not modifiers. One press
+commits the footwork, the swing and the timing together, which is why the
+original feels the way it does. Timing is judged on *when* that key goes down
+relative to the ball; press it as the meter enters green. Which stroke it is
+comes from what is held at that instant, so the modifier has to be down first.
+
+The arrows do double duty exactly as the original's left stick does: before the
+ball is bowled they walk the batsman about his crease, and once it is out of the
+hand they are the shot's direction. Nothing switches them by hand — the
+delivery's phase does. Footwork is chosen automatically from the length unless
+S or W is already held during the run-up.
+
+These three are ours, on keys the original leaves free:
+
+| Keys | Action |
+|---|---|
+| Space / Enter (or R) | Bowl the next delivery |
+| C | Switch batting / TV camera |
 
 The cyan pitch ring pulses and drifts during the run-up, then locks green as the
 bowler enters the delivery stride. It marks the predicted first bounce, including
-aerodynamic drift, and fades after pitching. WASD movement stops at release and
+aerodynamic drift, and fades after pitching. Crease movement stops at release and
 resets before the next ball.
+
+### What the strip shows
+
+The score bar is derived from the scorebook on every render rather than stored,
+so a number on it can never disagree with the balls that produced it:
+
+- score, overs and both batsmen's runs (balls faced)
+- the release speed, held from the moment of release and unaffected by bat
+  contact or a fielder's throw
+- the over in progress, read out as a commentator would: `1 • 4 W •`
+- the partnership — runs and balls since the last wicket
+- the bowler's figures in `O-M-R-W` form. Runs are what is *charged* to him:
+  wides and no-balls are his, byes and leg-byes are not, and a run-out is not
+  his wicket. An over that costs him nothing is a maiden even if byes were run
+  off it.
+- the run rate, and the required rate while there is still something to ask for
+
+Items drop from the middle outwards as the viewport narrows; the score, the pace
+and the figures are the last to go.
 
 Well-timed attacking shots have enough power for fours and sixes against pace
 and spin. Placement still matters: ground shots into a fielder can be stopped,
@@ -78,17 +118,27 @@ The selected player determines the delivery action, stock seam/spin and availabl
 pace range. Select a different bowler between deliveries; his style stays fixed
 throughout the run-up. Batting-ladder progress is separate and unaffected.
 After six legal balls, an unfinished innings pauses at the bowler picker.
-Choose the next bowler and pace, then click **Start next over**; R cannot skip
-this pause, and wides do not advance the over.
+Choose the next bowler and pace, then click **Start next over**; the bowl key
+cannot skip this pause, and wides do not advance the over.
+
+Bowling uses the original's same four keys:
 
 | Controls | Bowling action |
 |---|---|
-| R / Bowl button | Start the run-up |
-| A / D or ← / → | Move the landing circle screen-left/right |
-| W / S or ↑ / ↓ | Fuller / shorter length |
-| Q / E or pace slider | Slower / faster within the selected bowler's range |
+| Space / Enter (or Bowl button) | Start the run-up |
+| ← / → | Move the landing circle screen-left/right |
+| ↑ / ↓ | Fuller / shorter length |
+| W / S or pace slider | The quicker and slower ball, within the bowler's range |
+| A / D | Seam or revolutions (see below) |
 | Space | Lock line, length and pace early |
-| V | Switch camera; bowling starts in the behind-bowler TV view |
+| C | Switch camera; bowling starts in the behind-bowler TV view |
+
+A / D mean different things depending on who is bowling, and the panel names
+them for whoever it is. For a seamer they tilt the seam, so the ball swings away
+from the right-hander or into him — up to just short of the 20-degree angle
+where the side force peaks. For a spinner the direction of turn belongs to his
+action and cannot be chosen, so the same keys are how hard the ball is spun:
+a big ripper one way, an arm ball the other.
 
 The ring pulses cyan while editable, then turns green when locked. If Space is
 not pressed, it locks automatically near the end of the run-up. The locked
@@ -169,12 +219,95 @@ dither.
   renderer's own must stay off.
 - `lib/game/fx/presets.ts` holds the recipe (ink, tone, grade, haze).
 
-Players follow the same source: tapered limbs, a sphere at every joint, a lathe
-head, and two joints per limb (hip+knee, shoulder+elbow) so a bowler can brace
-a front leg and a keeper can sit on their haunches (`assets/kit.ts`).
+Players are the exception to "procedural in code": their bodies are built in
+Blender (see Players below) and drawn with smooth normals, so the cel bands
+fall across a body instead of shattering it into facets. They do not receive
+shadows: on a curved body the shadow map's acne turns into hard-edged patches.
 
 Figures face -Z. `Object3D.lookAt` points +Z at its target, which turns them to
 face away, so use `faceYaw` instead.
+
+## Players
+
+Players come from one of two sources, both fitted to the game's own skeleton
+by the same Blender code (`tools/players/common.py`), so the animation and the
+bat-ball contact are identical whichever a player wears:
+
+- **Rocketbox avatars** (the squads use these): Microsoft Rocketbox's MIT
+  licensed people, with photographic faces, hair and skin. A roster entry
+  names the avatar: `appearance: { avatar: "Male_Adult_08", cap: false }`.
+- **Built bodies**: MPFB (MakeHuman for Blender) anatomy with the face, hair
+  and facial hair described by building blocks, below.
+
+### Rocketbox avatars
+
+The avatars wear street clothes. Their shape is kept (a shirt modelled as a
+shirt reads as one) but not their colour: every garment becomes a kit slot the
+game paints per side. The mesh is one welded piece, so the garments are told
+apart by their texture islands: an island is skin only if it is the colour of
+that avatar's own fingers (and, on the torso, a very close match), sleeves
+must be nearer the skin than the shirt to count as bare, and hips vote by
+height between hem and waistband. Bare skin, faces and hair keep their
+photographic texture, shaded with the soft cel ramp.
+
+The source assets are not in the repo (each avatar is 25-40 MB of TGA). To
+rebuild:
+
+```bash
+pnpm fetch:rocketbox
+```
+
+```bash
+pnpm build:rocketbox
+```
+
+`tools/players/rocketbox/avatars.json` lists the avatars;
+`roster/appearance.ts` lists the same ones for the game, and a test keeps the
+two, the manifest and the squads in step (including that nobody appears twice
+on the field). The MIT notice ships beside the models in
+`public/models/players/ROCKETBOX-LICENSE.md`.
+
+### Built bodies
+
+```ts
+{ name: "Sharma", role: "batsman", appearance: {
+    heritage: "south-asian", physique: "athletic", skin: "tan",
+    hair: "neat", hairColour: "black", facialHair: "short", eyes: "dark-brown", cap: false } }
+```
+
+- Heritage: south-asian, east-asian, european, african. Physique: lean,
+  athletic, stocky, plus veteran (south-asian and european) for umpires.
+  These pick the body file (`public/models/players/<heritage>-<physique>.glb`).
+- Hair: bald, buzz, short, receding, neat, curly, long. Facial hair: none,
+  stubble, short, full, goatee, moustache, goatee-moustache. Every style is
+  grown in Blender off each head's own scalp and jaw, so it fits that face.
+- Skin, hair and eye colours are palettes (`roster/appearance.ts`); nothing is
+  baked into the files. Lips, brows and stubble are derived from them.
+- Batsmen wear helmets and keepers gloves; `cap` is a fielder's preference.
+  Headgear is sized to the measured skull plus whatever hair is under it.
+
+Adding a team is adding data to `lib/game/roster/squads.ts`. A test checks
+every appearance names a build and styles that exist, that every bowling style
+the game uses has a bowler, and that any bowler leaves enough players to field.
+
+How it fits: the bodies are skinned to the game's rig joints and bound in
+MPFB's own A-pose (the rig is rotated to match for the bind), so the animation
+still poses only the rig — the bat meets the ball exactly where it did before.
+Blender stretches MPFB's bones so every pivot lands on the game's (fit error
+0.00 mm), merges its 53 bones' weights into the game's 14 skinned joints,
+smooths the anatomy out from under the shirt and trousers, cuts the collar,
+waistband and sleeves as clean edge loops, and keeps the head and hands at full
+resolution.
+
+To rebuild the bodies (needs Blender 4.2+ with the MPFB extension enabled):
+
+```bash
+pnpm build:players
+```
+
+Inputs are `tools/players/builds.json` (the builds and styles) and
+`tools/players/rig.json` (the game skeleton, regenerated from `kit.ts` with
+`UPDATE_RIG=1 pnpm test tools/players`; a test fails if it drifts).
 
 ## Animation
 
@@ -293,8 +426,9 @@ handle and does not use personal browser data.
 
 ## Looking at the assets
 
-Every model, texture and animation the game uses is generated in code. To see
-what the code produced:
+Every model, texture and animation the game uses is generated in code, apart
+from the players' bodies, which are generated by a Blender script. To see what
+the code produced:
 
 ```bash
 pnpm preview:assets
@@ -333,7 +467,10 @@ lib/game/
     shot.ts              timing/footwork/aim -> outcome  [pure, tested]
     state.ts             over state machine              [pure, tested]
     fielding.ts          field placement, chase, runs
-  assets/                procedural geometry + the preview harness
+  assets/                procedural geometry, bodies loader + the preview harness
+  roster/                appearances, squads, dressing a rig as a player [tested]
+public/models/players/   player bodies (built by tools/players/)
+tools/players/           the Blender build: build.py, builds.json, rig.json
   mat/                   procedural PBR textures
 ```
 
@@ -379,5 +516,7 @@ pace-overrun/no-ball meter.
 ## Assets and copyright
 
 No EA models, textures, audio, logos or player likenesses are used. Everything
-is generated procedurally. What is being matched is the visual language — HUD
+is generated procedurally; every player is fictional. Player bodies are made
+with MPFB (MakeHuman), whose generated output is CC0, or from Microsoft
+Rocketbox avatars (MIT, notice in `public/models/players/ROCKETBOX-LICENSE.md`). What is being matched is the visual language — HUD
 layout, camera work, interaction grammar.

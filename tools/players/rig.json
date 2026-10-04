@@ -1,0 +1,165 @@
+{
+  "joints": [
+    {
+      "name": "pelvis",
+      "parent": null,
+      "offset": [
+        0,
+        0.905,
+        0
+      ]
+    },
+    {
+      "name": "spine",
+      "parent": "pelvis",
+      "offset": [
+        0,
+        0.1,
+        0
+      ]
+    },
+    {
+      "name": "chest",
+      "parent": "spine",
+      "offset": [
+        0,
+        0.185,
+        0
+      ]
+    },
+    {
+      "name": "head",
+      "parent": "chest",
+      "offset": [
+        0,
+        0.3,
+        0
+      ]
+    },
+    {
+      "name": "hipL",
+      "parent": "pelvis",
+      "offset": [
+        -0.092,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "kneeL",
+      "parent": "hipL",
+      "offset": [
+        0,
+        -0.425,
+        0
+      ]
+    },
+    {
+      "name": "ankleL",
+      "parent": "kneeL",
+      "offset": [
+        0,
+        -0.405,
+        0
+      ]
+    },
+    {
+      "name": "hipR",
+      "parent": "pelvis",
+      "offset": [
+        0.092,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "kneeR",
+      "parent": "hipR",
+      "offset": [
+        0,
+        -0.425,
+        0
+      ]
+    },
+    {
+      "name": "ankleR",
+      "parent": "kneeR",
+      "offset": [
+        0,
+        -0.405,
+        0
+      ]
+    },
+    {
+      "name": "shoulderL",
+      "parent": "chest",
+      "offset": [
+        -0.185,
+        0.245,
+        0
+      ]
+    },
+    {
+      "name": "elbowL",
+      "parent": "shoulderL",
+      "offset": [
+        0,
+        -0.285,
+        0
+      ]
+    },
+    {
+      "name": "handL",
+      "parent": "elbowL",
+      "offset": [
+        0,
+        -0.315,
+        0
+      ]
+    },
+    {
+      "name": "shoulderR",
+      "parent": "chest",
+      "offset": [
+        0.185,
+        0.245,
+        0
+      ]
+    },
+    {
+      "name": "elbowR",
+      "parent": "shoulderR",
+      "offset": [
+        0,
+        -0.285,
+        0
+      ]
+    },
+    {
+      "name": "handR",
+      "parent": "elbowR",
+      "offset": [
+        0,
+        -0.315,
+        0
+      ]
+    }
+  ],
+  "skeleton": {
+    "ankleH": 0.075,
+    "shin": 0.405,
+    "thigh": 0.425,
+    "hipX": 0.092,
+    "hipY": 0.905,
+    "waist": 0.1,
+    "chest": 0.185,
+    "shoulderX": 0.185,
+    "shoulderY": 0.245,
+    "neckY": 0.3,
+    "upperArm": 0.285,
+    "forearm": 0.255,
+    "hand": 0.06,
+    "toe": 0.175,
+    "heel": 0.065
+  }
+}

@@ -201,9 +201,20 @@ const _qFoot = new THREE.Quaternion();
 const _e = new THREE.Euler();
 const _m4 = new THREE.Matrix4();
 
-/** Poles for the two-handed grip, root space. Tuned against the harness. */
-const POLE_TOP_ELBOW = new THREE.Vector3(-0.55, -0.35, 0.75);
-const POLE_BOTTOM_ELBOW = new THREE.Vector3(0.45, -1, 0.35);
+/**
+ * Poles for the two-handed grip, in the chest's frame (it faces -Z, its left
+ * is -X). The front (top-hand) elbow comes up and out in front of the chest —
+ * the "high front elbow" every coach asks for — rather than back and down
+ * into the ribs, which tucked the whole front arm behind the body so that
+ * from the batting camera the batsman looked one-armed.
+ */
+const POLE_TOP_ELBOW = new THREE.Vector3(-0.6, 0.45, -0.65);
+/**
+ * The bottom-hand elbow points back toward the keeper and away from the hip,
+ * so from behind the arms frame the body instead of the back arm lying flat
+ * along the ribs.
+ */
+const POLE_BOTTOM_ELBOW = new THREE.Vector3(0.85, -0.35, 0.55);
 
 /**
  * Write `p` onto `rig`. FK first, then each IK contact blended in by its

@@ -6,6 +6,8 @@
  * the whole kit without the engine existing.
  */
 
+import type { BodyLibrary } from "./bodies";
+import { dressAs, sampleFor } from "../roster/cast";
 import * as THREE from "three";
 import { createMaterialLibrary, type MaterialLibrary } from "../materials";
 import { makeBall, makeBat, makeHelmet, makePads, makeStumps } from "./equipment";
@@ -20,6 +22,7 @@ export * from "./ground";
 export * from "./stadium";
 export * from "./kit";
 export { motionSheets } from "../anim/sheets";
+export { loadBodies } from "./bodies";
 
 export type PreviewEntry = { name: string; group: THREE.Group };
 
@@ -27,7 +30,7 @@ export type PreviewEntry = { name: string; group: THREE.Group };
  * Everything the preview harness renders. Takes a live renderer because the
  * material library needs the max-anisotropy capability off it.
  */
-export async function previewGroups(renderer: THREE.WebGLRenderer): Promise<PreviewEntry[]> {
+export async function previewGroups(renderer: THREE.WebGLRenderer, bodies: BodyLibrary): Promise<PreviewEntry[]> {
   const lib: MaterialLibrary = createMaterialLibrary(renderer);
   const mats = { standard: undefined }; // equipment uses its own cached materials
 
@@ -57,6 +60,7 @@ export async function previewGroups(renderer: THREE.WebGLRenderer): Promise<Prev
   // sheets (`pnpm preview:motion`), not here.
   const posed = (role: Role, colours = FIELDING_KIT, ready = false) => {
     const rig = makePlayer({ role, colours });
+    dressAs(rig, bodies, sampleFor(role));
     applyPose(rig, ready ? readyPose(makePose(), 0) : idlePose(makePose(), 0));
     return rig.root;
   };
